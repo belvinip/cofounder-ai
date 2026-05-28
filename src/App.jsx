@@ -29,14 +29,77 @@ const ago = (ts) => {
   return `${Math.floor(h/24)}d ago`;
 };
 
-// ─── Demo profiles for browsing without login ─────────────────────────────────
+// ─── 30 Demo profiles ────────────────────────────────────────────────────────
 const DEMO_PROFILES = [
-  { id:"d1", name:"Alex Chen", role:"CEO / Founder", location:"San Francisco, CA", bio:"Serial entrepreneur with 3 exits. Building at the intersection of AI and healthcare.", skills:["AI/ML","Product","Strategy","Fundraising"], project_name:"HealthAI", project_industry:"HealthTech", experience:8, is_approved:true },
-  { id:"d2", name:"Priya Sharma", role:"CTO", location:"New York, NY", bio:"Full-stack engineer turned founder. Passionate about EdTech.", skills:["React","Node.js","System Design","Fintech"], project_name:"EduChain", project_industry:"EdTech", experience:6, is_approved:true },
-  { id:"d3", name:"Marcus Webb", role:"CMO", location:"Austin, TX", bio:"Growth hacker with 1M+ user scale experience.", skills:["Growth","Marketing","B2C","Analytics"], project_name:"GrowthOS", project_industry:"SaaS", experience:5, is_approved:true },
-  { id:"d4", name:"Sofia Russo", role:"CPO / Design", location:"London, UK", bio:"Design-led founder. Ex-unicorn design lead.", skills:["UX","Branding","Figma","Web3"], project_name:"DesignDAO", project_industry:"Web3", experience:7, is_approved:true },
-  { id:"d5", name:"Daniel Kim", role:"CFO / COO", location:"Singapore", bio:"Finance & ops expert. Ex-Goldman Sachs.", skills:["Finance","Ops","Fundraising","B2B SaaS"], project_name:"CapStack", project_industry:"FinTech", experience:9, is_approved:true },
-  { id:"d6", name:"Yuki Tanaka", role:"Blockchain Lead", location:"Tokyo, Japan", bio:"Blockchain architect and DeFi native.", skills:["Solidity","Web3","Cryptography","Rust"], project_name:"TrustLayer", project_industry:"Web3", experience:4, is_approved:true },
+  { id:"d1",  name:"Alex Chen",       role:"CEO / Founder",      location:"San Francisco, CA",  bio:"Serial entrepreneur with 3 exits. Building at the intersection of AI and healthcare.",             skills:["AI/ML","Product","Strategy","Fundraising"],         project_name:"HealthAI",       project_industry:"HealthTech",  experience:8,  is_approved:true },
+  { id:"d2",  name:"Priya Sharma",    role:"CTO",                location:"New York, NY",        bio:"Full-stack engineer turned founder. Passionate about EdTech and democratising education.",         skills:["React","Node.js","System Design","FinTech"],         project_name:"EduChain",       project_industry:"EdTech",      experience:6,  is_approved:true },
+  { id:"d3",  name:"Marcus Webb",     role:"CMO",                location:"Austin, TX",          bio:"Growth hacker who scaled 2 startups to 1M+ users. Data-driven, obsessed with retention.",         skills:["Growth","Marketing","B2C","Analytics"],             project_name:"GrowthOS",       project_industry:"SaaS",        experience:5,  is_approved:true },
+  { id:"d4",  name:"Sofia Russo",     role:"CPO / Design Lead",  location:"London, UK",          bio:"Design-led founder. Ex-unicorn design lead. Obsessed with beautiful, functional UX.",             skills:["UX","Branding","Figma","Web3"],                     project_name:"DesignDAO",      project_industry:"Web3",        experience:7,  is_approved:true },
+  { id:"d5",  name:"Daniel Kim",      role:"CFO / COO",          location:"Singapore",           bio:"Finance & ops expert. Ex-Goldman Sachs. Loves turning messy cap tables into clean outcomes.",     skills:["Finance","Ops","Fundraising","B2B SaaS"],           project_name:"CapStack",       project_industry:"FinTech",     experience:9,  is_approved:true },
+  { id:"d6",  name:"Yuki Tanaka",     role:"Blockchain Lead",    location:"Tokyo, Japan",        bio:"Blockchain architect and DeFi native. Building trustless systems for the real world.",            skills:["Solidity","Web3","Cryptography","Rust"],            project_name:"TrustLayer",     project_industry:"Web3",        experience:4,  is_approved:true },
+  { id:"d7",  name:"Amara Okonkwo",   role:"Founder / CEO",      location:"Lagos, Nigeria",      bio:"Climate tech evangelist building carbon credit infrastructure for emerging markets.",              skills:["Climate","ESG","Strategy","B2B"],                   project_name:"CarbonBridge",   project_industry:"Climate",     experience:6,  is_approved:true },
+  { id:"d8",  name:"Jake Morrison",   role:"Full-Stack Engineer", location:"Berlin, Germany",     bio:"10x engineer who loves shipping fast. Built and sold 2 SaaS products bootstrapped.",              skills:["TypeScript","Go","Postgres","DevOps"],              project_name:"ShipFast",       project_industry:"SaaS",        experience:7,  is_approved:true },
+  { id:"d9",  name:"Lin Wei",         role:"AI Researcher",      location:"Shanghai, China",     bio:"PhD in ML from MIT. Turned academic research into practical LLM applications at scale.",          skills:["LLMs","Python","MLOps","Research"],                 project_name:"ContextAI",      project_industry:"DeepTech",    experience:5,  is_approved:true },
+  { id:"d10", name:"Rachel Torres",   role:"Head of Sales",      location:"Miami, FL",           bio:"0-to-$10M ARR sales leader. Built sales teams from scratch at 3 hypergrowth startups.",          skills:["Sales","B2B","CRM","Revenue Ops"],                  project_name:"SalesMatrix",    project_industry:"SaaS",        experience:8,  is_approved:true },
+  { id:"d11", name:"Tom Blackwell",   role:"Hardware Engineer",  location:"Seattle, WA",         bio:"Ex-Apple hardware engineer. Bridging the gap between software intelligence and physical devices.", skills:["Hardware","IoT","Embedded","C++"],                  project_name:"SenseGrid",      project_industry:"DeepTech",    experience:11, is_approved:true },
+  { id:"d12", name:"Nadia Petrov",    role:"Founder / CMO",      location:"Amsterdam, Netherlands",bio:"Brand builder and storyteller. Took 2 DTC brands from zero to $5M revenue in 18 months.",      skills:["Brand","DTC","Content","Paid Ads"],                 project_name:"StoryCommerce",  project_industry:"E-commerce",  experience:6,  is_approved:true },
+  { id:"d13", name:"Carlos Mendez",   role:"CTO / Co-Founder",   location:"Mexico City, Mexico", bio:"Fintech infrastructure builder. Helped 3 neobanks in LATAM launch their core banking stack.",    skills:["FinTech","Java","Microservices","Banking APIs"],    project_name:"NovoBanco",      project_industry:"FinTech",     experience:9,  is_approved:true },
+  { id:"d14", name:"Isla MacGregor",  role:"Product Manager",    location:"Edinburgh, UK",       bio:"Product leader with deep expertise in consumer health apps and wearables.",                       skills:["Product","Health","User Research","Roadmapping"],  project_name:"PulseTrack",     project_industry:"HealthTech",  experience:5,  is_approved:true },
+  { id:"d15", name:"Ravi Patel",      role:"DevOps / Infra Lead",location:"Bangalore, India",    bio:"Infrastructure wizard. Scaled systems from 10K to 10M users at a Bangalore unicorn.",            skills:["Kubernetes","AWS","Terraform","SRE"],               project_name:"CloudLaunch",    project_industry:"SaaS",        experience:7,  is_approved:true },
+  { id:"d16", name:"Mei Yamamoto",    role:"CPO",                location:"Osaka, Japan",        bio:"Consumer product expert. Launched 4 apps with 500K+ DAU combined on iOS and Android.",           skills:["Mobile","Swift","Kotlin","Product"],                project_name:"DailyHabit",     project_industry:"Consumer",    experience:6,  is_approved:true },
+  { id:"d17", name:"Ethan Brooks",    role:"Founder / CEO",      location:"Denver, CO",          bio:"EdTech entrepreneur. Previous company acquired by Coursera. Passionate about lifelong learning.", skills:["EdTech","B2C","Curriculum","LMS"],                  project_name:"SkillPath",      project_industry:"EdTech",      experience:10, is_approved:true },
+  { id:"d18", name:"Zara Ahmed",      role:"UX / Product",       location:"Dubai, UAE",          bio:"Human-centred design champion. Designed products used by 20M+ people across the Middle East.",   skills:["UX","Design Systems","Research","Arabic UX"],      project_name:"MENADesign",     project_industry:"Consumer",    experience:7,  is_approved:true },
+  { id:"d19", name:"Oliver Grant",    role:"CFO",                location:"Zurich, Switzerland", bio:"Ex-Credit Suisse. Structured funding for 10+ startups. Deep expertise in European VC landscape.", skills:["Finance","VC","M&A","Fundraising"],                 project_name:"AlphaFund",      project_industry:"FinTech",     experience:14, is_approved:true },
+  { id:"d20", name:"Aisha Diallo",    role:"CEO / Founder",      location:"Nairobi, Kenya",      bio:"Building mobile-first financial tools for the unbanked across Sub-Saharan Africa.",              skills:["Mobile Money","Strategy","B2C","Ops"],             project_name:"PesaPlus",       project_industry:"FinTech",     experience:5,  is_approved:true },
+  { id:"d21", name:"Ben Nakamura",    role:"ML Engineer",        location:"Toronto, Canada",     bio:"Computer vision specialist. 3 papers published at NeurIPS. Now applying research to retail AI.",  skills:["Computer Vision","PyTorch","MLOps","Retail AI"],   project_name:"ShelfSight",     project_industry:"DeepTech",    experience:6,  is_approved:true },
+  { id:"d22", name:"Lena Kowalski",   role:"Growth Lead",        location:"Warsaw, Poland",      bio:"PLG expert who drove 300% YoY user growth at a SaaS unicorn in Warsaw. Loves experimentation.",  skills:["PLG","SEO","Analytics","Experimentation"],         project_name:"LoopGrowth",     project_industry:"SaaS",        experience:5,  is_approved:true },
+  { id:"d23", name:"David Osei",      role:"Founder / CTO",      location:"Accra, Ghana",        bio:"Full-stack builder focused on logistics tech. Making last-mile delivery work in Africa.",         skills:["React Native","Node.js","Logistics","Maps API"],   project_name:"LastMile",       project_industry:"E-commerce",  experience:4,  is_approved:true },
+  { id:"d24", name:"Sophie Laurent",  role:"COO",                location:"Paris, France",       bio:"Operations expert who scaled a French startup from 5 to 200 people in 3 years.",                 skills:["Ops","Hiring","Process","OKRs"],                    project_name:"ScaleOps",       project_industry:"SaaS",        experience:8,  is_approved:true },
+  { id:"d25", name:"Kai Andersen",    role:"Founder / CTO",      location:"Copenhagen, Denmark", bio:"Climate fintech builder. Combining open banking and carbon data to help consumers go green.",     skills:["Open Banking","APIs","Climate","TypeScript"],      project_name:"GreenLedger",    project_industry:"Climate",     experience:5,  is_approved:true },
+  { id:"d26", name:"Fatima Al-Hassan",role:"CEO",                location:"Riyadh, Saudi Arabia",bio:"Vision 2030 aligned founder. Building workforce reskilling platforms for the Saudi market.",      skills:["EdTech","Arabic","B2B","Government Relations"],    project_name:"ReskillSA",      project_industry:"EdTech",      experience:7,  is_approved:true },
+  { id:"d27", name:"Marco Ferretti",  role:"Founder / Designer", location:"Milan, Italy",        bio:"Ex-Fiat designer turned startup founder. Applying industrial design thinking to SaaS products.",  skills:["Industrial Design","UX","Brand","Figma"],          project_name:"FormProduct",    project_industry:"SaaS",        experience:9,  is_approved:true },
+  { id:"d28", name:"Hana Park",       role:"Head of Data",       location:"Seoul, South Korea",  bio:"Data scientist turned product leader. Built recommendation engines serving 50M+ Korean users.",   skills:["Data Science","Recommender Systems","SQL","Python"],project_name:"PersonalizeKR",  project_industry:"Consumer",    experience:6,  is_approved:true },
+  { id:"d29", name:"Tyler Washington",role:"Founder / CEO",      location:"Atlanta, GA",         bio:"HealthTech entrepreneur focused on closing the racial health equity gap through technology.",      skills:["HealthTech","Community","Strategy","Fundraising"], project_name:"EquityHealth",   project_industry:"HealthTech",  experience:6,  is_approved:true },
+  { id:"d30", name:"Nina Volkov",     role:"CTO",                location:"Tallinn, Estonia",    bio:"Ex-Skype engineer. Building privacy-first communication tools for remote-first teams.",           skills:["Rust","WebRTC","Privacy","Distributed Systems"],   project_name:"SecureComms",    project_industry:"SaaS",        experience:10, is_approved:true },
+];
+
+// ─── 30 Demo events ───────────────────────────────────────────────────────────
+const now = new Date();
+const future = (days, h=10, m=0) => { const d=new Date(now); d.setDate(d.getDate()+days); d.setHours(h,m,0,0); return d.toISOString(); };
+const past   = (days, h=18, m=0) => { const d=new Date(now); d.setDate(d.getDate()-days); d.setHours(h,m,0,0); return d.toISOString(); };
+
+const DEMO_EVENTS = [
+  { id:"e1",  title:"AI Founders Breakfast",           description:"Casual morning meetup for founders building AI-first products. Share what you're working on over coffee and croissants.",                   location:"WeWork, San Francisco",       event_date:future(2,8,30),  max_attendees:25,  industry_tags:["DeepTech","SaaS"],          creator_id:"d1",  creator:{name:"Alex Chen",       avatar_url:null, id:"d1"} },
+  { id:"e2",  title:"FinTech Demo Day",                description:"10 early-stage fintech founders pitch to a room of angels and VCs. Network afterwards with top investors in the space.",                    location:"500 Startups, NYC",           event_date:future(4,14,0),  max_attendees:80,  industry_tags:["FinTech"],                  creator_id:"d5",  creator:{name:"Daniel Kim",      avatar_url:null, id:"d5"} },
+  { id:"e3",  title:"Web3 Builders Hackathon",         description:"48-hour hackathon building DeFi and NFT primitives on Ethereum. $10K in prizes. Teams of 2-4.",                                             location:"TechHub, London",             event_date:future(6,9,0),   max_attendees:120, industry_tags:["Web3"],                     creator_id:"d4",  creator:{name:"Sofia Russo",     avatar_url:null, id:"d4"} },
+  { id:"e4",  title:"EdTech Product Workshop",         description:"Hands-on workshop on building engaging learning experiences. Bring your laptop and a product idea.",                                         location:"Online (Zoom)",               event_date:future(3,16,0),  max_attendees:50,  industry_tags:["EdTech"],                   creator_id:"d17", creator:{name:"Ethan Brooks",    avatar_url:null, id:"d17"} },
+  { id:"e5",  title:"Climate Tech Pitch Night",        description:"Founders working on climate solutions pitch their ideas to a panel of impact investors. Q&A session follows.",                               location:"Climate House, Berlin",        event_date:future(7,18,30), max_attendees:60,  industry_tags:["Climate"],                  creator_id:"d7",  creator:{name:"Amara Okonkwo",  avatar_url:null, id:"d7"} },
+  { id:"e6",  title:"SaaS Growth Masterclass",         description:"Deep dive into product-led growth strategies that worked for $10M+ ARR companies. Real data, real examples.",                               location:"Stripe HQ, San Francisco",    event_date:future(5,10,0),  max_attendees:40,  industry_tags:["SaaS"],                     creator_id:"d22", creator:{name:"Lena Kowalski",  avatar_url:null, id:"d22"} },
+  { id:"e7",  title:"Founder Speed Dating",            description:"Find your co-founder in 90 minutes. 5-minute rounds with potential matches. Structured, efficient, and surprisingly fun.",                  location:"Founders Club, Austin",       event_date:future(8,18,0),  max_attendees:30,  industry_tags:["SaaS","FinTech","EdTech"],   creator_id:"d3",  creator:{name:"Marcus Webb",    avatar_url:null, id:"d3"} },
+  { id:"e8",  title:"HealthTech Investor Roundtable",  description:"Closed-door roundtable connecting HealthTech founders with 8 Series A investors. Application required.",                                    location:"Andreessen Horowitz, Menlo",  event_date:future(10,13,0), max_attendees:16,  industry_tags:["HealthTech"],               creator_id:"d29", creator:{name:"Tyler Washington",avatar_url:null,id:"d29"} },
+  { id:"e9",  title:"Women in DeepTech Mixer",         description:"Monthly mixer celebrating women building frontier technology. Allies welcome. Great speakers, better networking.",                           location:"Google Campus, Zurich",       event_date:future(9,17,30), max_attendees:70,  industry_tags:["DeepTech","Climate"],       creator_id:"d18", creator:{name:"Zara Ahmed",     avatar_url:null, id:"d18"} },
+  { id:"e10", title:"Open Source Dev Meetup",          description:"Monthly gathering for open source contributors and founders. Lightning talks on tooling, infra, and developer experience.",                  location:"Basecamp Office, Chicago",    event_date:future(11,18,0), max_attendees:45,  industry_tags:["SaaS","DeepTech"],          creator_id:"d30", creator:{name:"Nina Volkov",    avatar_url:null, id:"d30"} },
+  { id:"e11", title:"E-commerce Founders Lunch",       description:"Intimate lunch for founders in e-commerce and DTC. Share challenges, swap playbooks, and make genuine connections.",                         location:"Soho House, NYC",             event_date:future(12,12,30),max_attendees:20,  industry_tags:["E-commerce"],               creator_id:"d12", creator:{name:"Nadia Petrov",   avatar_url:null, id:"d12"} },
+  { id:"e12", title:"Mobile-First Product Summit",     description:"Full-day summit on building exceptional mobile products. Speakers from Duolingo, Spotify, and Calm.",                                        location:"Convention Centre, Singapore",event_date:future(14,9,0),  max_attendees:200, industry_tags:["Consumer","EdTech"],        creator_id:"d16", creator:{name:"Mei Yamamoto",   avatar_url:null, id:"d16"} },
+  { id:"e13", title:"Africa Tech Founder Circle",      description:"Monthly circle for African founders building pan-African or global companies. Peer support, investor intros, warm community.",               location:"iHub, Nairobi",               event_date:future(5,17,0),  max_attendees:35,  industry_tags:["FinTech","E-commerce"],     creator_id:"d20", creator:{name:"Aisha Diallo",   avatar_url:null, id:"d20"} },
+  { id:"e14", title:"B2B SaaS Metrics Deep Dive",      description:"Workshop on the metrics that matter for B2B SaaS. NRR, CAC payback, magic number — we'll cover it all with real benchmarks.",              location:"Online (Google Meet)",         event_date:future(6,15,0),  max_attendees:100, industry_tags:["SaaS"],                     creator_id:"d24", creator:{name:"Sophie Laurent", avatar_url:null, id:"d24"} },
+  { id:"e15", title:"Hardware & IoT Builders Meetup",  description:"For founders building in the physical world. Demos, teardowns, and war stories from the supply chain trenches.",                             location:"Pier 9, San Francisco",       event_date:future(15,11,0), max_attendees:40,  industry_tags:["DeepTech"],                 creator_id:"d11", creator:{name:"Tom Blackwell",  avatar_url:null, id:"d11"} },
+  { id:"e16", title:"MENA Startup Showcase",           description:"Showcase of the most exciting startups from the Middle East and North Africa. Investors from the Gulf and London attending.",               location:"DIFC, Dubai",                 event_date:future(18,14,0), max_attendees:150, industry_tags:["FinTech","EdTech","Consumer"],creator_id:"d18",creator:{name:"Zara Ahmed",     avatar_url:null, id:"d18"} },
+  { id:"e17", title:"Privacy-First Product Talk",      description:"How to build products that respect user privacy without sacrificing growth. Case studies from Signal, Proton, and Brave.",                  location:"Online (YouTube Live)",       event_date:future(3,19,0),  max_attendees:null, industry_tags:["SaaS","DeepTech"],         creator_id:"d30", creator:{name:"Nina Volkov",    avatar_url:null, id:"d30"} },
+  { id:"e18", title:"Seed Funding Panel",              description:"5 seed investors break down what they look for in 2025. Bring your deck and get brutally honest feedback in small groups.",                  location:"YC Campus, Mountain View",    event_date:future(20,14,0), max_attendees:60,  industry_tags:["SaaS","FinTech","HealthTech"],creator_id:"d19",creator:{name:"Oliver Grant",   avatar_url:null, id:"d19"} },
+  { id:"e19", title:"Rust & Systems Programming Night",description:"For engineers who love low-level programming. Lightning talks on Rust in production, WebAssembly, and distributed systems.",               location:"Mozilla HQ, San Francisco",   event_date:future(13,18,30),max_attendees:50,  industry_tags:["DeepTech","SaaS"],          creator_id:"d30", creator:{name:"Nina Volkov",    avatar_url:null, id:"d30"} },
+  { id:"e20", title:"Impact Investing Breakfast",      description:"Connecting impact-focused founders with patient capital. Focus on climate, health equity, and financial inclusion.",                          location:"Pemberton Hall, London",      event_date:future(7,8,30),  max_attendees:30,  industry_tags:["Climate","HealthTech"],     creator_id:"d7",  creator:{name:"Amara Okonkwo",  avatar_url:null, id:"d7"} },
+  { id:"e21", title:"Design Systems Workshop",         description:"Hands-on workshop building a component library from scratch in Figma and React. Take home a production-ready design system.",               location:"Figma HQ, San Francisco",     event_date:future(9,10,0),  max_attendees:24,  industry_tags:["SaaS","Consumer"],          creator_id:"d4",  creator:{name:"Sofia Russo",    avatar_url:null, id:"d4"} },
+  { id:"e22", title:"LLM Application Builders Meetup", description:"Monthly meetup for developers building on top of GPT, Claude, and Gemini. Show and tell, debugging sessions, and best practices.",          location:"OpenAI Office, SF",           event_date:future(16,18,0), max_attendees:80,  industry_tags:["DeepTech","SaaS"],          creator_id:"d9",  creator:{name:"Lin Wei",        avatar_url:null, id:"d9"} },
+  { id:"e23", title:"Revenue Operations Summit",       description:"For RevOps leaders and founders wanting to build a world-class GTM machine. Tools, processes, and team structures that scale.",             location:"Salesforce Tower, NYC",       event_date:future(21,9,0),  max_attendees:90,  industry_tags:["SaaS"],                     creator_id:"d10", creator:{name:"Rachel Torres",  avatar_url:null, id:"d10"} },
+  { id:"e24", title:"Nordic Founders Meetup",          description:"Gathering for Scandinavian founders and those building for Nordic markets. Saunas, great coffee, and genuine conversations.",               location:"Slush HQ, Helsinki",          event_date:future(25,17,0), max_attendees:55,  industry_tags:["Climate","SaaS"],           creator_id:"d25", creator:{name:"Kai Andersen",   avatar_url:null, id:"d25"} },
+  { id:"e25", title:"Consumer App Growth Workshop",    description:"Tactical workshop: push notifications, onboarding flows, virality loops, and retention strategies for consumer apps.",                       location:"Online (Zoom)",               event_date:future(4,11,0),  max_attendees:75,  industry_tags:["Consumer"],                 creator_id:"d16", creator:{name:"Mei Yamamoto",   avatar_url:null, id:"d16"} },
+  { id:"e26", title:"Pitch Perfect — Founder Bootcamp",description:"Two-day intensive bootcamp on nailing your investor pitch. Deck review, mock pitches, and coaching from ex-VCs.",                          location:"General Assembly, London",    event_date:future(28,9,0),  max_attendees:20,  industry_tags:["SaaS","FinTech","HealthTech"],creator_id:"d19",creator:{name:"Oliver Grant",   avatar_url:null, id:"d19"} },
+  { id:"e27", title:"Korea Tech Networking Night",     description:"For founders building in or for South Korea and the broader APAC market. Investors from SoftBank and Kakao Ventures attending.",            location:"COEX, Seoul",                 event_date:future(11,18,30),max_attendees:100, industry_tags:["Consumer","DeepTech"],      creator_id:"d28", creator:{name:"Hana Park",      avatar_url:null, id:"d28"} },
+  { id:"e28", title:"HealthTech Regulatory Q&A",       description:"Expert panel on navigating FDA, CE Mark, and TGA approval for digital health products. Ask your burning compliance questions.",             location:"Online (Zoom)",               event_date:future(17,14,0), max_attendees:60,  industry_tags:["HealthTech"],               creator_id:"d14", creator:{name:"Isla MacGregor", avatar_url:null, id:"d14"} },
+  { id:"e29", title:"Startup Visa & Global Expansion", description:"How to set up your company for global growth. Tax structures, visa options, EOR providers, and banking across borders.",                   location:"Stripe Atlas HQ, Dublin",     event_date:future(22,10,0), max_attendees:45,  industry_tags:["SaaS","FinTech"],           creator_id:"d8",  creator:{name:"Jake Morrison",  avatar_url:null, id:"d8"} },
+  // 1 past event
+  { id:"e30", title:"Founder Stories: The Hard Parts", description:"Founders share the moments they almost quit — and what kept them going. Raw, unfiltered, and deeply human conversations.",                  location:"Village Underground, London", event_date:past(3,19,0),    max_attendees:80,  industry_tags:["SaaS","FinTech","EdTech","Climate"], creator_id:"d3", creator:{name:"Marcus Webb", avatar_url:null, id:"d3"} },
 ];
 
 // ════════════════════════════════════════════════════════
@@ -522,7 +585,14 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
       <div className="grid grid-cols-3 gap-1.5">
         {[["identity","◉ Identity"],["project","⬡ Project"],["contact","🔐 Contact"]].map(([id,lb])=>(
           <button key={id} onClick={()=>setSection(id)}
-            className={`py-2 rounded-xl text-[11px] font-medium border transition-all ${section===id?"bg-indigo-500/15 border-indigo-500/28 text-indigo-300":"bg-white/[0.04] border-white/8 text-white/35 hover:text-white/55"}`}>{lb}</button>
+            className={`py-2.5 rounded-xl text-xs font-semibold border transition-all ${
+              section===id
+                ?"text-white border-indigo-500/50"
+                :"bg-white/[0.04] border-white/12 text-white/50 hover:text-white/75 hover:bg-white/[0.07]"
+            }`}
+            style={section===id?{background:"linear-gradient(135deg,rgba(99,102,241,0.22),rgba(139,92,246,0.14))",boxShadow:"0 0 12px rgba(99,102,241,0.15)"}:undefined}>
+            {lb}
+          </button>
         ))}
       </div>
 
@@ -701,9 +771,11 @@ function EventsTab({ user, isApproved, showToast }) {
 
   async function load() {
     const {data:evs} = await supabase.from("events").select("*, creator:profiles(name,avatar_url,id)").order("event_date");
-    setEvents(evs||[]);
-    if (evs?.length) {
-      const {data:att} = await supabase.from("event_attendees").select("*").in("event_id",evs.map(e=>e.id));
+    const realEvs = evs||[];
+    // Fall back to demo events if no real events exist yet
+    setEvents(realEvs.length > 0 ? realEvs : DEMO_EVENTS);
+    if (realEvs.length) {
+      const {data:att} = await supabase.from("event_attendees").select("*").in("event_id",realEvs.map(e=>e.id));
       const m={}; (att||[]).forEach(a=>{ if(!m[a.event_id]) m[a.event_id]=[]; m[a.event_id].push(a.user_id); }); setAttMap(m);
     }
     setLoading(false);
@@ -863,7 +935,12 @@ function ManageTab({ showToast }) {
       <div className="grid grid-cols-3 gap-1.5">
         {["all","pending","approved"].map(f=>(
           <button key={f} onClick={()=>setFilter(f)}
-            className={`py-2 rounded-xl text-[11px] font-medium border capitalize transition-all ${filter===f?"bg-indigo-500/15 border-indigo-500/28 text-indigo-300":"bg-white/[0.04] border-white/8 text-white/35"}`}>{f}</button>
+            className={`py-2.5 rounded-xl text-xs font-semibold border capitalize transition-all ${
+              filter===f?"text-white border-indigo-500/50":"bg-white/[0.04] border-white/12 text-white/50 hover:text-white/75"
+            }`}
+            style={filter===f?{background:"linear-gradient(135deg,rgba(99,102,241,0.22),rgba(139,92,246,0.14))",boxShadow:"0 0 12px rgba(99,102,241,0.15)"}:undefined}>
+            {f}
+          </button>
         ))}
       </div>
 
@@ -1012,11 +1089,18 @@ export default function App() {
             style={{background:"radial-gradient(circle,rgba(99,102,241,0.2),rgba(139,92,246,0.1))",border:"1px solid rgba(99,102,241,0.3)"}}>✦</div>
           <span className="text-white font-bold text-sm tracking-tight">CoFounder AI</span>
         </div>
-        <nav className="flex items-center gap-0.5">
+        <nav className="flex items-center gap-1">
           {NAV.map(n=>(
             <button key={n.id} onClick={()=>goTab(n.id,n.auth)}
-              className={`relative flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all ${tab===n.id?"text-white bg-white/[0.08] border border-white/[0.08]":"text-white/38 hover:text-white/65 hover:bg-white/[0.04]"}`}>
-              <span className={tab===n.id?"text-indigo-400":""}>{n.icon}</span>{n.label}
+              className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                tab===n.id
+                  ?"text-white border"
+                  :"text-white/60 hover:text-white hover:bg-white/[0.06] border border-transparent"
+              }`}
+              style={tab===n.id?{background:"linear-gradient(135deg,rgba(99,102,241,0.25),rgba(139,92,246,0.15))",borderColor:"rgba(99,102,241,0.5)",boxShadow:"0 0 16px rgba(99,102,241,0.2)"}:undefined}>
+              <span className={tab===n.id?"text-indigo-300":"text-white/50"}>{n.icon}</span>
+              <span>{n.label}</span>
+              {tab===n.id&&<motion.div layoutId="desktop-nav-indicator" className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 rounded-full bg-indigo-400" style={{boxShadow:"0 0 8px #818cf8"}}/>}
             </button>
           ))}
         </nav>
@@ -1055,18 +1139,27 @@ export default function App() {
       </main>
 
       {/* ── Mobile bottom nav ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-white/[0.06]" style={{background:"rgba(7,9,15,0.85)",backdropFilter:"blur(20px)"}}>
-        <div className="flex items-center justify-around px-1 py-2.5">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-white/[0.12]" style={{background:"rgba(7,9,15,0.96)",backdropFilter:"blur(20px)"}}>
+        <div className="flex items-center justify-around px-2 py-2">
           {NAV.map(n=>{
             const active=tab===n.id;
             return (
-              <button key={n.id} onClick={()=>goTab(n.id,n.auth)} className="relative flex flex-col items-center gap-0.5 px-3 py-1 min-w-0">
-                {active&&<motion.div layoutId="nav-bg" className="absolute inset-0 rounded-xl" style={{background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.18)"}} transition={{type:"spring",bounce:0.18,duration:0.4}}/>}
-                <motion.span animate={active?{scale:[1,1.18,1]}:{scale:1}} transition={{duration:0.3}} className="relative text-base"
-                  style={{color:active?"#818cf8":"rgba(255,255,255,0.28)",filter:active?"drop-shadow(0 0 6px rgba(99,102,241,0.7))":"none"}}>
+              <button key={n.id} onClick={()=>goTab(n.id,n.auth)}
+                className="relative flex flex-col items-center gap-1 px-3 py-1.5 rounded-2xl transition-all min-w-[60px]"
+                style={active?{background:"linear-gradient(135deg,rgba(99,102,241,0.22),rgba(139,92,246,0.14))",border:"1px solid rgba(99,102,241,0.4)",boxShadow:"0 0 14px rgba(99,102,241,0.18)"}:{border:"1px solid transparent"}}>
+                <motion.span
+                  animate={active?{scale:[1,1.15,1]}:{scale:1}}
+                  transition={{duration:0.25}}
+                  className="text-lg leading-none"
+                  style={{
+                    color: active ? "#a5b4fc" : "rgba(255,255,255,0.45)",
+                    filter: active ? "drop-shadow(0 0 6px rgba(129,140,248,0.8))" : "none",
+                  }}>
                   {n.icon}
                 </motion.span>
-                <span className="relative text-[9px] font-medium" style={{color:active?"#818cf8":"rgba(255,255,255,0.25)"}}>{n.label}</span>
+                <span className="text-[10px] font-semibold leading-none" style={{color:active?"#a5b4fc":"rgba(255,255,255,0.4)"}}>
+                  {n.label}
+                </span>
               </button>
             );
           })}
