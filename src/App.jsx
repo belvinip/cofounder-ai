@@ -99,6 +99,19 @@ const BG = "#0a0e1a";
 const CARD_BG = "rgba(255,255,255,0.04)";
 const BORDER = "rgba(255,255,255,0.08)";
 
+// ─── Image Upload Helper ──────────────────────────────────────────────────────
+async function uploadImage(file, bucket, pathPrefix) {
+  if(!file) return null;
+  // Validate
+  if(file.size > 5*1024*1024) throw new Error("Image must be under 5MB");
+  const ext = file.name.split(".").pop().toLowerCase();
+  const fileName = `${pathPrefix}-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from(bucket).upload(fileName, file, { upsert:true, cacheControl:"3600" });
+  if(error) throw error;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(fileName);
+  return data.publicUrl;
+}
+
 // ════════════════════════════════════════════════════════
 // UI ATOMS
 // ════════════════════════════════════════════════════════
@@ -204,41 +217,13 @@ const GoogleIcon = () => (
 );
 
 // ════════════════════════════════════════════════════════
-// LOGIN MODAL (Sign In / Register popup)
+// LOGIN MODAL (Google only)
 // ════════════════════════════════════════════════════════
-function LoginModal({ onClose, showToast }) {
-  const [mode, setMode] = useState("signin"); // signin | register
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
+function LoginModal({ onClose }) {
   const [loading, setLoading] = useState(false);
 
-  async function handleEmailAuth() {
-    if(!email.trim()||!password.trim()){ showToast("Email and password required","error"); return; }
-    setLoading(true);
-    try {
-      if(mode==="register"){
-        const { error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { full_name: name.trim()||email.split("@")[0] } },
-        });
-        if(error) throw error;
-        showToast("Account created! Check your email to confirm, then sign in ✓");
-        setMode("signin");
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if(error) throw error;
-        showToast("Signed in ✓");
-        onClose();
-      }
-    } catch(e) {
-      showToast(e.message||"Authentication failed","error");
-    }
-    setLoading(false);
-  }
-
   function handleGoogle() {
+    setLoading(true);
     supabase.auth.signInWithOAuth({ provider:"google", options:{ redirectTo: window.location.origin } });
   }
 
@@ -253,74 +238,36 @@ function LoginModal({ onClose, showToast }) {
         <button onClick={onClose} className="absolute top-5 right-5 z-10 w-8 h-8 rounded-full flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">✕</button>
 
         <div className="p-8">
-          {/* Logo */}
           <div className="flex justify-center mb-5">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl" style={{background:"linear-gradient(135deg,#7cb9e8,#7c6fe0)",boxShadow:"0 8px 24px rgba(124,111,224,0.4)"}}>✦</div>
           </div>
 
-          {/* Title */}
           <h2 className="text-3xl font-bold text-center mb-2" style={{background:"linear-gradient(135deg,#7cb9e8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
-            {mode==="signin"?"Sign In Required":"Create Account"}
+            Welcome to CoFounder AI
           </h2>
-          <p className="text-white/45 text-center text-sm mb-6">
-            {mode==="signin"?"Sign in to continue with this action":"Register to join the community"}
+          <p className="text-white/45 text-center text-sm mb-8">
+            Sign in with Google to register, match with founders, chat and join events
           </p>
 
-          {/* Tab switch */}
-          <div className="flex p-1 rounded-2xl mb-6" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
-            <button onClick={()=>setMode("signin")}
-              className="flex-1 py-3 rounded-xl text-sm font-bold transition-all"
-              style={mode==="signin"?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#0b0e18"}:{color:"rgba(255,255,255,0.6)"}}>
-              Sign In
-            </button>
-            <button onClick={()=>setMode("register")}
-              className="flex-1 py-3 rounded-xl text-sm font-bold transition-all"
-              style={mode==="register"?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#0b0e18"}:{color:"rgba(255,255,255,0.6)"}}>
-              Register
-            </button>
-          </div>
-
-          {/* Fields */}
-          <div className="space-y-4">
-            {mode==="register"&&(
-              <div className="space-y-2">
-                <label className="text-white font-semibold text-sm">Full Name</label>
-                <input value={name} onChange={e=>setName(e.target.value)} placeholder="Enter your name"
-                  className="w-full rounded-2xl px-4 py-3.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500/50 transition-all"
-                  style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}/>
+          <div className="space-y-3 mb-8">
+            {[["🤝","Match with co-founders"],["💬","Chat once connected"],["📅","Register for events"],["🚀","Showcase your project"]].map(([ic,tx])=>(
+              <div key={tx} className="flex items-center gap-3 text-sm text-white/55">
+                <span className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0" style={{background:"rgba(124,111,224,0.15)"}}>{ic}</span>
+                {tx}
               </div>
-            )}
-            <div className="space-y-2">
-              <label className="text-white font-semibold text-sm">Email</label>
-              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Enter your email"
-                className="w-full rounded-2xl px-4 py-3.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500/50 transition-all"
-                style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}/>
-            </div>
-            <div className="space-y-2">
-              <label className="text-white font-semibold text-sm">Password</label>
-              <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleEmailAuth()} placeholder="Enter your password"
-                className="w-full rounded-2xl px-4 py-3.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500/50 transition-all"
-                style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}/>
-            </div>
-
-            <PrimaryBtn onClick={handleEmailAuth} loading={loading} className="w-full">
-              {mode==="signin"?"⇥ Sign In":"Create Account"}
-            </PrimaryBtn>
+            ))}
           </div>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-6">
-            <div className="flex-1 h-px" style={{background:BORDER}}/>
-            <span className="text-white/30 text-xs font-semibold uppercase tracking-wider">Or continue with</span>
-            <div className="flex-1 h-px" style={{background:BORDER}}/>
-          </div>
-
-          {/* Google */}
-          <button onClick={handleGoogle}
-            className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl text-sm font-semibold text-white transition-all hover:bg-white/[0.06]"
-            style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
-            <GoogleIcon/> Google
+          <button onClick={handleGoogle} disabled={loading}
+            className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl text-sm font-bold text-white transition-all disabled:opacity-60"
+            style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",boxShadow:"0 8px 24px rgba(124,111,224,0.4)"}}>
+            {loading
+              ? <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              : <GoogleIcon/>}
+            {loading ? "Redirecting…" : "Continue with Google"}
           </button>
+
+          <p className="text-white/25 text-xs text-center mt-4">New users complete a quick profile setup after signing in</p>
         </div>
       </motion.div>
     </motion.div>
@@ -571,7 +518,10 @@ function EventsTab({ user, isApproved, showToast }) {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[]});
+  const [editingId, setEditingId] = useState(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
+  const coverInputRef = useRef();
 
   async function load() {
     try {
@@ -589,16 +539,59 @@ function EventsTab({ user, isApproved, showToast }) {
   }
   useEffect(()=>{ load(); },[user]);
 
+  function openCreate() {
+    setEditingId(null);
+    setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
+    setShowForm(true);
+  }
+
+  function openEdit(ev) {
+    setEditingId(ev.id);
+    setForm({
+      title:ev.title||"", description:ev.description||"", location:ev.location||"",
+      event_date:ev.event_date?new Date(ev.event_date).toISOString().slice(0,16):"",
+      max_attendees:ev.max_attendees||"", industry_tags:ev.industry_tags||[], cover_url:ev.cover_url||""
+    });
+    setSelectedEvent(null);
+    setShowForm(true);
+  }
+
+  async function handleCoverUpload(e) {
+    const file=e.target.files?.[0];
+    if(!file) return;
+    setUploadingCover(true);
+    try {
+      const url=await uploadImage(file,"event-covers",user.id+"-"+Date.now());
+      setForm(f=>({...f,cover_url:url}));
+      showToast("Cover image uploaded ✓");
+    } catch(err){ showToast(err.message||"Upload failed — make sure the 'event-covers' bucket exists","error"); }
+    setUploadingCover(false);
+  }
+
   async function createEvent() {
     if(!form.title||!form.event_date){showToast("Title & date required","error");return;}
     setSaving(true);
     try {
-      await supabase.from("events").insert({...form,creator_id:user.id,max_attendees:parseInt(form.max_attendees)||null});
-      showToast("Event created ✓"); setShowForm(false);
-      setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[]});
+      const payload={title:form.title,description:form.description,location:form.location,event_date:form.event_date,max_attendees:parseInt(form.max_attendees)||null,industry_tags:form.industry_tags,cover_url:form.cover_url||null};
+      if(editingId){
+        await supabase.from("events").update(payload).eq("id",editingId);
+        showToast("Event updated ✓");
+      } else {
+        await supabase.from("events").insert({...payload,creator_id:user.id});
+        showToast("Event created ✓");
+      }
+      setShowForm(false); setEditingId(null);
+      setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
       load();
     } catch(e){showToast(e.message,"error");}
     setSaving(false);
+  }
+
+  async function deleteEvent(id) {
+    try {
+      await supabase.from("events").delete().eq("id",id);
+      showToast("Event deleted"); setSelectedEvent(null); load();
+    } catch(e){showToast(e.message,"error");}
   }
 
   async function toggleAttend(evId) {
@@ -617,6 +610,8 @@ function EventsTab({ user, isApproved, showToast }) {
     return (ev.title||"").toLowerCase().includes(q)||(ev.description||"").toLowerCase().includes(q)||(ev.location||"").toLowerCase().includes(q);
   });
 
+  const ownsEvent = (ev) => user && ev.creator_id===user.id;
+
   return (
     <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-14}} transition={{duration:0.28}} className="space-y-5">
       {/* Header */}
@@ -628,18 +623,40 @@ function EventsTab({ user, isApproved, showToast }) {
           <p className="text-white/45 text-sm mt-1">Discover and join networking events in our community</p>
         </div>
         {isApproved&&(
-          <PrimaryBtn onClick={()=>setShowForm(!showForm)} small>
+          <PrimaryBtn onClick={()=>showForm?setShowForm(false):openCreate()} small>
             {showForm?"✕ Cancel":"+ Create Event"}
           </PrimaryBtn>
         )}
       </div>
 
-      {/* Create Form */}
+      {/* Create / Edit Form */}
       <AnimatePresence>
         {showForm&&(
           <motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}} style={{overflow:"hidden"}}>
             <Card className="p-5 space-y-4">
-              <div className="text-white font-bold text-base">Create New Event</div>
+              <div className="text-white font-bold text-base">{editingId?"Edit Event":"Create New Event"}</div>
+
+              {/* Cover image upload */}
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Cover Image</label>
+                {form.cover_url ? (
+                  <div className="relative rounded-2xl overflow-hidden" style={{aspectRatio:"16/9"}}>
+                    <img src={form.cover_url} alt="cover" className="w-full h-full object-cover"/>
+                    <button onClick={()=>setForm(f=>({...f,cover_url:""}))}
+                      className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center text-white" style={{background:"rgba(0,0,0,0.6)"}}>✕</button>
+                  </div>
+                ) : (
+                  <button onClick={()=>coverInputRef.current?.click()} disabled={uploadingCover}
+                    className="w-full rounded-2xl flex flex-col items-center justify-center gap-2 py-8 transition-all hover:bg-white/[0.04]"
+                    style={{background:"rgba(255,255,255,0.03)",border:`2px dashed ${BORDER}`}}>
+                    {uploadingCover
+                      ? <svg className="w-6 h-6 animate-spin text-white/40" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                      : <><span className="text-2xl">🖼️</span><span className="text-white/40 text-sm">Tap to upload cover image</span></>}
+                  </button>
+                )}
+                <input ref={coverInputRef} type="file" accept="image/*" onChange={handleCoverUpload} className="hidden"/>
+              </div>
+
               {[["Title","title","text","Event title…"],["Location","location","text","City or Online…"],["Max Attendees","max_attendees","number","50"]].map(([lb,k,t,ph])=>(
                 <div key={k} className="space-y-1.5">
                   <label className="text-white/40 text-xs font-medium uppercase tracking-wider">{lb}</label>
@@ -660,7 +677,7 @@ function EventsTab({ user, isApproved, showToast }) {
                   className="w-full rounded-2xl px-4 py-3 text-sm text-white focus:outline-none"
                   style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,colorScheme:"dark"}}/>
               </div>
-              <PrimaryBtn onClick={createEvent} loading={saving} className="w-full">Create Event</PrimaryBtn>
+              <PrimaryBtn onClick={createEvent} loading={saving} className="w-full">{editingId?"Save Changes":"Create Event"}</PrimaryBtn>
             </Card>
           </motion.div>
         )}
@@ -698,38 +715,52 @@ function EventsTab({ user, isApproved, showToast }) {
             const spotsLeft = ev.max_attendees ? ev.max_attendees - cnt : null;
             return (
               <motion.div key={ev.id} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:i*0.03}}>
-                <Card className={`p-5 cursor-pointer transition-all hover:border-white/20 ${past?"opacity-50":""}`}>
-                  <div onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})}>
-                    <div className="font-bold text-white text-base mb-1">{ev.title}</div>
-                    <div className="text-white/40 text-sm mb-3">Hosted by {ev.creator?.name||"Community"}</div>
-                    {ev.description&&<p className="text-white/50 text-sm leading-relaxed mb-4 line-clamp-2">{ev.description}</p>}
+                <Card className={`overflow-hidden cursor-pointer transition-all hover:border-white/20 ${past?"opacity-50":""}`}>
+                  {/* Cover image */}
+                  {ev.cover_url&&(
+                    <div onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})} className="w-full overflow-hidden" style={{aspectRatio:"16/9"}}>
+                      <img src={ev.cover_url} alt={ev.title} className="w-full h-full object-cover"/>
+                    </div>
+                  )}
+                  <div className="p-5">
+                    <div onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-bold text-white text-base mb-1">{ev.title}</div>
+                        {ownsEvent(ev)&&<span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa"}}>Your event</span>}
+                      </div>
+                      <div className="text-white/40 text-sm mb-3">Hosted by {ev.creator?.name||"Community"}</div>
+                      {ev.description&&<p className="text-white/50 text-sm leading-relaxed mb-4 line-clamp-2">{ev.description}</p>}
 
-                    <div className="space-y-2 mb-4">
-                      <div className="flex items-center gap-2 text-white/45 text-sm">
-                        <span>📅</span> {fmtDate(ev.event_date)}
-                        <span className="ml-2">🕐</span> {fmtTime(ev.event_date)}
+                      <div className="space-y-2 mb-4">
+                        <div className="flex items-center gap-2 text-white/45 text-sm">
+                          <span>📅</span> {fmtDate(ev.event_date)}
+                          <span className="ml-2">🕐</span> {fmtTime(ev.event_date)}
+                        </div>
+                        {ev.location&&<div className="flex items-center gap-2 text-white/45 text-sm"><span>📍</span>{ev.location}</div>}
+                        <div className="flex items-center gap-2 text-white/45 text-sm">
+                          <span>👥</span> {cnt}{ev.max_attendees?` / ${ev.max_attendees}`:""} attending
+                          {spotsLeft!=null && spotsLeft>0 && !past && <span className="text-emerald-400/70 text-xs ml-1">· {spotsLeft} spots left</span>}
+                          {full && !past && <span className="text-red-400/70 text-xs ml-1">· Full</span>}
+                        </div>
                       </div>
-                      {ev.location&&<div className="flex items-center gap-2 text-white/45 text-sm"><span>📍</span>{ev.location}</div>}
-                      <div className="flex items-center gap-2 text-white/45 text-sm">
-                        <span>👥</span> {cnt}{ev.max_attendees?` / ${ev.max_attendees}`:""} attending
-                        {spotsLeft!=null && spotsLeft>0 && !past && <span className="text-emerald-400/70 text-xs ml-1">· {spotsLeft} spots left</span>}
-                        {full && !past && <span className="text-red-400/70 text-xs ml-1">· Full</span>}
-                      </div>
+
+                      {ev.industry_tags?.length>0&&(
+                        <div className="flex flex-wrap gap-2 mb-4">{ev.industry_tags.map(t=><SkillChip key={t} label={t}/>)}</div>
+                      )}
                     </div>
 
-                    {ev.industry_tags?.length>0&&(
-                      <div className="flex flex-wrap gap-2 mb-4">{ev.industry_tags.map(t=><SkillChip key={t} label={t}/>)}</div>
+                    {ownsEvent(ev)&&!past&&(
+                      <OutlineBtn onClick={()=>openEdit(ev)} className="w-full mb-2" small>✎ Edit Event</OutlineBtn>
                     )}
+                    {!past&&(
+                      attending
+                        ? <OutlineBtn onClick={()=>toggleAttend(ev.id)} className="w-full" small>✓ Registered — Cancel</OutlineBtn>
+                        : <PrimaryBtn onClick={()=>toggleAttend(ev.id)} className="w-full" disabled={!!full}>
+                            {full?"Event Full":"Register to Attend"}
+                          </PrimaryBtn>
+                    )}
+                    {past&&<div className="text-center text-white/30 text-sm py-2">This event has ended</div>}
                   </div>
-
-                  {!past&&(
-                    attending
-                      ? <OutlineBtn onClick={()=>toggleAttend(ev.id)} className="w-full" small>✓ Registered — Cancel</OutlineBtn>
-                      : <PrimaryBtn onClick={()=>toggleAttend(ev.id)} className="w-full" disabled={!!full}>
-                          {full?"Event Full":"Register to Attend"}
-                        </PrimaryBtn>
-                  )}
-                  {past&&<div className="text-center text-white/30 text-sm py-2">This event has ended</div>}
                 </Card>
               </motion.div>
             );
@@ -746,10 +777,20 @@ function EventsTab({ user, isApproved, showToast }) {
             <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}}
               className="w-full max-w-lg overflow-y-auto rounded-t-3xl md:rounded-3xl"
               style={{maxHeight:"88vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
+              {/* Cover image (if any) */}
+              {selectedEvent.cover_url&&(
+                <div className="relative w-full overflow-hidden" style={{aspectRatio:"16/9"}}>
+                  <img src={selectedEvent.cover_url} alt={selectedEvent.title} className="w-full h-full object-cover"/>
+                  <button onClick={()=>setSelectedEvent(null)}
+                    className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center text-white transition-all" style={{background:"rgba(0,0,0,0.5)"}}>✕</button>
+                </div>
+              )}
               {/* Modal header banner */}
-              <div className="relative p-6 pb-5" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.25),rgba(167,139,250,0.12))"}}>
-                <button onClick={()=>setSelectedEvent(null)}
-                  className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-all" style={{background:"rgba(0,0,0,0.3)"}}>✕</button>
+              <div className="relative p-6 pb-5" style={selectedEvent.cover_url?{}:{background:"linear-gradient(135deg,rgba(124,111,224,0.25),rgba(167,139,250,0.12))"}}>
+                {!selectedEvent.cover_url&&(
+                  <button onClick={()=>setSelectedEvent(null)}
+                    className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-all" style={{background:"rgba(0,0,0,0.3)"}}>✕</button>
+                )}
                 {selectedEvent.industry_tags?.length>0&&(
                   <div className="flex flex-wrap gap-2 mb-3">{selectedEvent.industry_tags.map(t=><SkillChip key={t} label={t}/>)}</div>
                 )}
@@ -807,6 +848,16 @@ function EventsTab({ user, isApproved, showToast }) {
                     </div>
                   </div>
                 </div>
+
+                {/* Owner controls */}
+                {ownsEvent(selectedEvent)&&(
+                  <div className="flex gap-2">
+                    <OutlineBtn onClick={()=>openEdit(selectedEvent)} className="flex-1">✎ Edit</OutlineBtn>
+                    <button onClick={()=>{ if(confirm("Delete this event?")) deleteEvent(selectedEvent.id); }}
+                      className="flex-1 py-2.5 rounded-2xl text-sm font-semibold transition-all"
+                      style={{border:"1px solid rgba(239,68,68,0.4)",color:"#f87171",background:"rgba(239,68,68,0.08)"}}>🗑 Delete</button>
+                  </div>
+                )}
 
                 {/* Action */}
                 {!selectedEvent.past&&(
@@ -949,12 +1000,27 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState("identity");
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef();
 
   useEffect(()=>{
     if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||""});
   },[profile]);
 
   const pitchScore=(()=>{let s=0;if(form.project_name?.length>3)s+=25;if(form.project_pitch?.length>20)s+=30;if(form.project_pitch?.length>80)s+=20;if(form.project_industry)s+=25;return Math.min(s,100);})();
+
+  async function handleAvatarUpload(e) {
+    const file=e.target.files?.[0];
+    if(!file) return;
+    setUploadingAvatar(true);
+    try {
+      const url=await uploadImage(file,"avatars",user.id);
+      await supabase.from("profiles").update({avatar_url:url}).eq("id",user.id);
+      setProfile(p=>({...p,avatar_url:url}));
+      showToast("Profile picture updated ✓");
+    } catch(err){ showToast(err.message||"Upload failed — make sure the 'avatars' storage bucket exists","error"); }
+    setUploadingAvatar(false);
+  }
 
   async function save() {
     setSaving(true);
@@ -983,7 +1049,15 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
       {/* Profile card */}
       <Card className="p-5">
         <div className="flex items-center gap-4">
-          <Av name={form.name||profile?.name} url={profile?.avatar_url} color={color} size="xl" ring/>
+          <div className="relative flex-shrink-0">
+            <Av name={form.name||profile?.name} url={profile?.avatar_url} color={color} size="xl" ring/>
+            <button onClick={()=>avatarInputRef.current?.click()} disabled={uploadingAvatar}
+              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs transition-all"
+              style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",border:"2px solid #0a0e1a",boxShadow:"0 2px 8px rgba(0,0,0,0.4)"}}>
+              {uploadingAvatar?<svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>:"📷"}
+            </button>
+            <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden"/>
+          </div>
           <div className="flex-1 min-w-0">
             <div className="text-white font-bold text-lg">{form.name||"Your Name"}</div>
             <div className="text-white/40 text-sm">{user?.email}</div>
@@ -993,6 +1067,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
                 :<span className="px-2.5 py-0.5 rounded-full text-xs font-semibold" style={{background:"rgba(245,158,11,0.15)",color:"#fbbf24",border:"1px solid rgba(245,158,11,0.3)"}}>Pending Approval</span>}
               {profile?.is_admin&&<span className="px-2.5 py-0.5 rounded-full text-xs font-semibold" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa",border:"1px solid rgba(124,111,224,0.3)"}}>Admin</span>}
             </div>
+            <button onClick={()=>avatarInputRef.current?.click()} className="text-white/40 hover:text-white/70 text-xs mt-2 transition-colors">📷 Change photo</button>
           </div>
         </div>
       </Card>
@@ -1408,19 +1483,9 @@ export default function App() {
             );
           })}
         </div>
-        {/* Sign in bar if not logged in */}
-        {!user&&(
-          <div className="px-5 pb-4 pt-1" style={{borderTop:`1px solid ${BORDER}`}}>
-            <button onClick={()=>setShowLogin(true)}
-              className="w-full flex items-center justify-center gap-2.5 py-3 rounded-2xl text-sm font-semibold text-white transition-all"
-              style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",boxShadow:"0 4px 20px rgba(124,111,224,0.35)"}}>
-              <GoogleIcon/> Sign in with Google
-            </button>
-          </div>
-        )}
       </nav>
 
-      <AnimatePresence>{showLogin&&!user&&<LoginModal key="login" onClose={()=>setShowLogin(false)} showToast={showToast}/>}</AnimatePresence>
+      <AnimatePresence>{showLogin&&!user&&<LoginModal key="login" onClose={()=>setShowLogin(false)}/>}</AnimatePresence>
       <AnimatePresence>{showOnboard&&user&&<OnboardingModal key="onboard" user={user} onComplete={completeOnboarding}/>}</AnimatePresence>
       <AnimatePresence>{toast&&<Toast key="t" msg={toast.msg} type={toast.type}/>}</AnimatePresence>
     </div>
