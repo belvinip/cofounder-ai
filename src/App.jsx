@@ -353,7 +353,7 @@ function ChatModal({ matchId, other, me, onClose }) {
 // ════════════════════════════════════════════════════════
 // MATCH TAB
 // ════════════════════════════════════════════════════════
-function MatchTab({ user, isApproved, showToast }) {
+function MatchTab({ user, isApproved, showToast, requireAuth }) {
   const [search, setSearch] = useState("");
   const [realProfiles, setRealProfiles] = useState([]);
   const [matchMap, setMatchMap] = useState({});
@@ -379,9 +379,10 @@ function MatchTab({ user, isApproved, showToast }) {
   const coreMembers = pool.slice(0,4);
 
   async function handleRequest(p) {
-    if(!user){showToast("Sign in to send requests","error");return;}
-    if(!isApproved){showToast("Account pending approval","error");return;}
-    if(p.id?.startsWith("d")){showToast("Demo profile — add real users via sign-up 😊");return;}
+    // Opens login popup if not signed in, or onboarding if profile incomplete
+    if(requireAuth && !requireAuth()) return;
+    if(!isApproved){showToast("Your account is pending admin approval","error");return;}
+    if(p.id?.startsWith("d")){showToast("Demo profile — real users appear here once they sign up 😊");return;}
     try {
       const {data,error}=await supabase.from("match_requests").insert({from_user_id:user.id,to_user_id:p.id}).select().single();
       if(error) throw error;
@@ -510,9 +511,11 @@ function MatchTab({ user, isApproved, showToast }) {
 // ════════════════════════════════════════════════════════
 // EVENTS TAB
 // ════════════════════════════════════════════════════════
-function EventsTab({ user, isApproved, showToast }) {
+function EventsTab({ user, isApproved, showToast, requireAuth }) {
   const [events, setEvents] = useState([]);
   const [attSet, setAttSet] = useState(new Set());
+  const [attCounts, setAttCounts] = useState({});
+  const [eventAttendees, setEventAttendees] = useState({}); // eventId -> [profiles]
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -529,10 +532,17 @@ function EventsTab({ user, isApproved, showToast }) {
       if(error||!evs||evs.length===0){ setEvents(DEMO_EVENTS); }
       else {
         setEvents(evs);
-        if(user){
-          const {data:att}=await supabase.from("event_attendees").select("event_id").eq("user_id",user.id);
-          setAttSet(new Set((att||[]).map(a=>a.event_id)));
-        }
+        // Load all attendees with their profile info
+        const {data:att}=await supabase.from("event_attendees")
+          .select("event_id, user_id, profile:profiles(id,name,email,mobile,avatar_url,role,location)");
+        const counts={}, byEvent={}, mine=new Set();
+        (att||[]).forEach(a=>{
+          counts[a.event_id]=(counts[a.event_id]||0)+1;
+          if(!byEvent[a.event_id]) byEvent[a.event_id]=[];
+          if(a.profile) byEvent[a.event_id].push(a.profile);
+          if(user && a.user_id===user.id) mine.add(a.event_id);
+        });
+        setAttCounts(counts); setEventAttendees(byEvent); setAttSet(mine);
       }
     } catch(e){ setEvents(DEMO_EVENTS); }
     setLoading(false);
@@ -540,6 +550,8 @@ function EventsTab({ user, isApproved, showToast }) {
   useEffect(()=>{ load(); },[user]);
 
   function openCreate() {
+    if(requireAuth && !requireAuth()) return;
+    if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     setEditingId(null);
     setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
     setShowForm(true);
@@ -595,12 +607,13 @@ function EventsTab({ user, isApproved, showToast }) {
   }
 
   async function toggleAttend(evId) {
-    if(!user){showToast("Sign in to attend events","error");return;}
-    if(!isApproved){showToast("Approval required","error");return;}
-    if(typeof evId==="string"&&evId.startsWith("e")){showToast("Demo event — sign up to create real events 😊");return;}
+    if(requireAuth && !requireAuth()) return;
+    if(!isApproved){showToast("Your account is pending admin approval","error");return;}
+    if(typeof evId==="string"&&evId.startsWith("e")){showToast("Demo event — real events you create are fully functional 😊");return;}
     const attending=attSet.has(evId);
-    if(attending){ await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",user.id); setAttSet(s=>{const n=new Set(s);n.delete(evId);return n;}); }
-    else { await supabase.from("event_attendees").insert({event_id:evId,user_id:user.id}); setAttSet(s=>new Set([...s,evId])); }
+    if(attending){ await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",user.id); }
+    else { await supabase.from("event_attendees").insert({event_id:evId,user_id:user.id}); }
+    load();
   }
 
   const now=new Date();
@@ -611,6 +624,9 @@ function EventsTab({ user, isApproved, showToast }) {
   });
 
   const ownsEvent = (ev) => user && ev.creator_id===user.id;
+  const myEvents = filtered.filter(ev=>ownsEvent(ev));
+  const otherEvents = filtered.filter(ev=>!ownsEvent(ev));
+  const cntOf = (ev) => ev.attendee_count || attCounts[ev.id] || 0;
 
   return (
     <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-14}} transition={{duration:0.28}} className="space-y-5">
@@ -700,23 +716,16 @@ function EventsTab({ user, isApproved, showToast }) {
 
       {/* Events List */}
       <div>
-        <SectionLabel
-          icon={<svg className="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
-          text="All Events" count={filtered.length}/>
-
-        {loading&&<div className="text-center text-white/30 py-12 text-sm">Loading events…</div>}
-
-        <div className="space-y-4">
-          {filtered.map((ev,i)=>{
+        {(()=>{
+          const renderCard = (ev,i) => {
             const past=new Date(ev.event_date)<now;
             const attending=attSet.has(ev.id);
-            const cnt=ev.attendee_count||0;
+            const cnt=cntOf(ev);
             const full=ev.max_attendees&&cnt>=ev.max_attendees;
             const spotsLeft = ev.max_attendees ? ev.max_attendees - cnt : null;
             return (
               <motion.div key={ev.id} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:i*0.03}}>
                 <Card className={`overflow-hidden cursor-pointer transition-all hover:border-white/20 ${past?"opacity-50":""}`}>
-                  {/* Cover image */}
                   {ev.cover_url&&(
                     <div onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})} className="w-full overflow-hidden" style={{aspectRatio:"16/9"}}>
                       <img src={ev.cover_url} alt={ev.title} className="w-full h-full object-cover"/>
@@ -730,7 +739,6 @@ function EventsTab({ user, isApproved, showToast }) {
                       </div>
                       <div className="text-white/40 text-sm mb-3">Hosted by {ev.creator?.name||"Community"}</div>
                       {ev.description&&<p className="text-white/50 text-sm leading-relaxed mb-4 line-clamp-2">{ev.description}</p>}
-
                       <div className="space-y-2 mb-4">
                         <div className="flex items-center gap-2 text-white/45 text-sm">
                           <span>📅</span> {fmtDate(ev.event_date)}
@@ -743,16 +751,19 @@ function EventsTab({ user, isApproved, showToast }) {
                           {full && !past && <span className="text-red-400/70 text-xs ml-1">· Full</span>}
                         </div>
                       </div>
-
                       {ev.industry_tags?.length>0&&(
                         <div className="flex flex-wrap gap-2 mb-4">{ev.industry_tags.map(t=><SkillChip key={t} label={t}/>)}</div>
                       )}
                     </div>
-
+                    {ownsEvent(ev)&&(
+                      <OutlineBtn onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})} className="w-full mb-2" small>
+                        👥 View Attendees ({cnt})
+                      </OutlineBtn>
+                    )}
                     {ownsEvent(ev)&&!past&&(
                       <OutlineBtn onClick={()=>openEdit(ev)} className="w-full mb-2" small>✎ Edit Event</OutlineBtn>
                     )}
-                    {!past&&(
+                    {!past&&!ownsEvent(ev)&&(
                       attending
                         ? <OutlineBtn onClick={()=>toggleAttend(ev.id)} className="w-full" small>✓ Registered — Cancel</OutlineBtn>
                         : <PrimaryBtn onClick={()=>toggleAttend(ev.id)} className="w-full" disabled={!!full}>
@@ -764,8 +775,29 @@ function EventsTab({ user, isApproved, showToast }) {
                 </Card>
               </motion.div>
             );
-          })}
-        </div>
+          };
+          return (
+            <>
+              {loading&&<div className="text-center text-white/30 py-12 text-sm">Loading events…</div>}
+
+              {/* MY EVENTS */}
+              {myEvents.length>0&&(
+                <div className="mb-8">
+                  <SectionLabel
+                    icon={<svg className="w-5 h-5" style={{color:"#a78bfa"}} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>}
+                    text="My Events" count={myEvents.length}/>
+                  <div className="space-y-4">{myEvents.map(renderCard)}</div>
+                </div>
+              )}
+
+              {/* ALL EVENTS */}
+              <SectionLabel
+                icon={<svg className="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
+                text="All Events" count={otherEvents.length}/>
+              <div className="space-y-4">{otherEvents.map(renderCard)}</div>
+            </>
+          );
+        })()}
       </div>
 
       {/* Event Detail Modal */}
@@ -849,6 +881,33 @@ function EventsTab({ user, isApproved, showToast }) {
                   </div>
                 </div>
 
+                {/* Attendee list — visible to event owner */}
+                {ownsEvent(selectedEvent)&&(
+                  <div>
+                    <div className="text-white/35 text-xs font-semibold uppercase tracking-wider mb-3">
+                      Attendees ({(eventAttendees[selectedEvent.id]||[]).length})
+                    </div>
+                    {(eventAttendees[selectedEvent.id]||[]).length===0 ? (
+                      <div className="text-white/30 text-sm py-3 text-center rounded-2xl" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+                        No one has registered yet
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {(eventAttendees[selectedEvent.id]||[]).map(att=>(
+                          <div key={att.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+                            <Av name={att.name} url={att.avatar_url} color={pal(att.id)} size="sm" ring/>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-white text-sm font-semibold truncate">{att.name||"Unnamed"}</div>
+                              <div className="text-white/40 text-xs truncate">{att.role||"Member"}{att.location?` · ${att.location}`:""}</div>
+                              <div className="text-white/50 text-xs mt-0.5 truncate">📧 {att.email}{att.mobile?`  ·  📱 ${att.mobile}`:""}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Owner controls */}
                 {ownsEvent(selectedEvent)&&(
                   <div className="flex gap-2">
@@ -860,7 +919,7 @@ function EventsTab({ user, isApproved, showToast }) {
                 )}
 
                 {/* Action */}
-                {!selectedEvent.past&&(
+                {!selectedEvent.past&&!ownsEvent(selectedEvent)&&(
                   selectedEvent.attending
                     ? <OutlineBtn onClick={()=>{toggleAttend(selectedEvent.id);setSelectedEvent(null);}} className="w-full">✓ Cancel Registration</OutlineBtn>
                     : <PrimaryBtn onClick={()=>{toggleAttend(selectedEvent.id);setSelectedEvent(null);}} className="w-full" disabled={!!selectedEvent.full}>
@@ -1224,12 +1283,25 @@ function ManageTab({ showToast }) {
 function OnboardingModal({ user, onComplete }) {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
-  const [data, setData] = useState({name:user?.user_metadata?.full_name||"",role:"",location:"",bio:"",skills:[],project_name:"",project_pitch:"",project_industry:"",mobile:""});
+  const [data, setData] = useState({name:user?.user_metadata?.full_name||"",role:"",location:"",bio:"",skills:[],project_name:"",project_pitch:"",project_industry:"",mobile:"",avatar_url:user?.user_metadata?.avatar_url||""});
   const [newSkill, setNewSkill] = useState("");
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef();
 
   function addSkill(e){ if(e.key==="Enter"&&newSkill.trim()&&!data.skills.includes(newSkill.trim())){ setData(d=>({...d,skills:[...d.skills,newSkill.trim()]})); setNewSkill(""); } }
 
-  const canStep1 = data.name.trim() && data.role.trim() && data.location.trim();
+  async function handleAvatar(e) {
+    const file=e.target.files?.[0];
+    if(!file) return;
+    setUploadingAvatar(true);
+    try {
+      const url=await uploadImage(file,"avatars",user.id);
+      setData(d=>({...d,avatar_url:url}));
+    } catch(err){ alert(err.message||"Upload failed — make sure the 'avatars' storage bucket exists"); }
+    setUploadingAvatar(false);
+  }
+
+  const canStep1 = data.name.trim() && data.role.trim() && data.location.trim() && data.avatar_url;
   const canStep2 = data.bio.trim() && data.skills.length>0;
 
   async function finish() {
@@ -1268,6 +1340,25 @@ function OnboardingModal({ user, onComplete }) {
             {step===1&&(
               <motion.div key="s1" initial={{opacity:0,x:20}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-20}} className="space-y-4">
                 <div className="text-white font-bold text-lg">About You</div>
+
+                {/* Profile photo — required */}
+                <div className="flex flex-col items-center gap-2 py-2">
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-full p-0.5" style={{background:data.avatar_url?"linear-gradient(135deg,#7c6fe0,#ec4899,#f59e0b)":"rgba(255,255,255,0.1)"}}>
+                      {data.avatar_url
+                        ? <img src={data.avatar_url} alt="" className="w-full h-full rounded-full object-cover"/>
+                        : <div className="w-full h-full rounded-full flex items-center justify-center text-3xl" style={{background:"rgba(255,255,255,0.05)"}}>📷</div>}
+                    </div>
+                    <button onClick={()=>avatarInputRef.current?.click()} disabled={uploadingAvatar}
+                      className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm"
+                      style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",border:"2px solid #0f1320"}}>
+                      {uploadingAvatar?<svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>:"+"}
+                    </button>
+                    <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatar} className="hidden"/>
+                  </div>
+                  <span className="text-white/40 text-xs">{data.avatar_url?"Looking good! ✓":"Profile photo (required)"}</span>
+                </div>
+
                 {field("Full Name","name","Your name")}
                 {field("Role / Title","role","e.g. Founder, CTO, Mobile Lender")}
                 {field("Location","location","e.g. Melbourne, VIC")}
@@ -1326,7 +1417,7 @@ function OnboardingModal({ user, onComplete }) {
               ? <PrimaryBtn onClick={()=>setStep(step+1)} disabled={step===1?!canStep1:!canStep2} className="flex-1">Continue →</PrimaryBtn>
               : <PrimaryBtn onClick={finish} loading={saving} className="flex-1">Complete Setup ✓</PrimaryBtn>}
           </div>
-          {step===1&&!canStep1&&<p className="text-white/30 text-xs text-center">Fill in name, role and location to continue</p>}
+          {step===1&&!canStep1&&<p className="text-white/30 text-xs text-center">Add a photo, name, role and location to continue</p>}
           {step===2&&!canStep2&&<p className="text-white/30 text-xs text-center">Add a bio and at least one skill to continue</p>}
         </div>
       </motion.div>
@@ -1378,6 +1469,21 @@ export default function App() {
     } catch(e){ showToast(e.message,"error"); }
   }
 
+  // Is the user fully set up? (signed in + profile complete + has photo)
+  function isProfileComplete(p) {
+    return !!(p?.role && p?.bio && p?.skills?.length && p?.avatar_url);
+  }
+
+  // Gate any action behind login + complete profile.
+  // Returns true if allowed to proceed; otherwise opens the right popup and returns false.
+  function requireAuth() {
+    if(!session?.user){ setShowLogin(true); return false; }
+    if(profile && !isProfileComplete(profile) && profile.email!==ADMIN_EMAIL){ setShowOnboard(true); showToastRef.current?.("Please complete your profile & photo first"); return false; }
+    return true;
+  }
+  const showToastRef = useRef();
+  showToastRef.current = showToast;
+
   if(session===undefined) return (
     <div className="min-h-screen flex items-center justify-center" style={{background:BG}}>
       <BgGlow/>
@@ -1409,7 +1515,7 @@ export default function App() {
     ), auth:true}]:[]),
   ];
 
-  function goTab(id,auth){ if(auth&&!user){showToast("Sign in to access this","error");return;} setTab(id); }
+  function goTab(id,auth){ if(auth&&!user){setShowLogin(true);return;} setTab(id); }
 
   // Sign-in screen if not logged in and trying to access auth tab
   const needsAuth = NAV.find(n=>n.id===tab)?.auth && !user;
@@ -1460,8 +1566,8 @@ export default function App() {
                 <GoogleIcon/> Sign In to Continue
               </PrimaryBtn>
             </motion.div>
-          ):tab==="matching"?<MatchTab key="m" user={user} isApproved={isApproved} showToast={showToast}/>
-          :tab==="events"?<EventsTab key="e" user={user} isApproved={isApproved} showToast={showToast}/>
+          ):tab==="matching"?<MatchTab key="m" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth}/>
+          :tab==="events"?<EventsTab key="e" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth}/>
           :tab==="chat"?<ChatTab key="c" user={user} showToast={showToast}/>
           :tab==="profile"?<ProfileTab key="p" user={user} profile={profile} setProfile={setProfile} showToast={showToast} isApproved={isApproved}/>
           :tab==="manage"&&isAdmin?<ManageTab key="a" showToast={showToast}/>
