@@ -450,6 +450,7 @@ function EventsTab({ user, isApproved, showToast }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[]});
 
   async function load() {
@@ -574,27 +575,32 @@ function EventsTab({ user, isApproved, showToast }) {
             const attending=attSet.has(ev.id);
             const cnt=ev.attendee_count||0;
             const full=ev.max_attendees&&cnt>=ev.max_attendees;
+            const spotsLeft = ev.max_attendees ? ev.max_attendees - cnt : null;
             return (
               <motion.div key={ev.id} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:i*0.03}}>
-                <Card className={`p-5 ${past?"opacity-50":""}`}>
-                  <div className="font-bold text-white text-base mb-1">{ev.title}</div>
-                  <div className="text-white/40 text-sm mb-3">Hosted by {ev.creator?.name||"Community"}</div>
-                  {ev.description&&<p className="text-white/50 text-sm leading-relaxed mb-4">{ev.description}</p>}
+                <Card className={`p-5 cursor-pointer transition-all hover:border-white/20 ${past?"opacity-50":""}`}>
+                  <div onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})}>
+                    <div className="font-bold text-white text-base mb-1">{ev.title}</div>
+                    <div className="text-white/40 text-sm mb-3">Hosted by {ev.creator?.name||"Community"}</div>
+                    {ev.description&&<p className="text-white/50 text-sm leading-relaxed mb-4 line-clamp-2">{ev.description}</p>}
 
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center gap-2 text-white/45 text-sm">
-                      <span>📅</span> {fmtDate(ev.event_date)}
-                      <span className="ml-2">🕐</span> {fmtTime(ev.event_date)}
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center gap-2 text-white/45 text-sm">
+                        <span>📅</span> {fmtDate(ev.event_date)}
+                        <span className="ml-2">🕐</span> {fmtTime(ev.event_date)}
+                      </div>
+                      {ev.location&&<div className="flex items-center gap-2 text-white/45 text-sm"><span>📍</span>{ev.location}</div>}
+                      <div className="flex items-center gap-2 text-white/45 text-sm">
+                        <span>👥</span> {cnt}{ev.max_attendees?` / ${ev.max_attendees}`:""} attending
+                        {spotsLeft!=null && spotsLeft>0 && !past && <span className="text-emerald-400/70 text-xs ml-1">· {spotsLeft} spots left</span>}
+                        {full && !past && <span className="text-red-400/70 text-xs ml-1">· Full</span>}
+                      </div>
                     </div>
-                    {ev.location&&<div className="flex items-center gap-2 text-white/45 text-sm"><span>📍</span>{ev.location}</div>}
-                    <div className="flex items-center gap-2 text-white/45 text-sm">
-                      <span>👥</span> {cnt}{ev.max_attendees?` / ${ev.max_attendees}`:""} attending
-                    </div>
+
+                    {ev.industry_tags?.length>0&&(
+                      <div className="flex flex-wrap gap-2 mb-4">{ev.industry_tags.map(t=><SkillChip key={t} label={t}/>)}</div>
+                    )}
                   </div>
-
-                  {ev.industry_tags?.length>0&&(
-                    <div className="flex flex-wrap gap-2 mb-4">{ev.industry_tags.map(t=><SkillChip key={t} label={t}/>)}</div>
-                  )}
 
                   {!past&&(
                     attending
@@ -610,6 +616,91 @@ function EventsTab({ user, isApproved, showToast }) {
           })}
         </div>
       </div>
+
+      {/* Event Detail Modal */}
+      <AnimatePresence>
+        {selectedEvent&&(
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+            className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/70 p-0 md:p-4"
+            onClick={e=>e.target===e.currentTarget&&setSelectedEvent(null)}>
+            <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}}
+              className="w-full max-w-lg overflow-y-auto rounded-t-3xl md:rounded-3xl"
+              style={{maxHeight:"88vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
+              {/* Modal header banner */}
+              <div className="relative p-6 pb-5" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.25),rgba(167,139,250,0.12))"}}>
+                <button onClick={()=>setSelectedEvent(null)}
+                  className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-all" style={{background:"rgba(0,0,0,0.3)"}}>✕</button>
+                {selectedEvent.industry_tags?.length>0&&(
+                  <div className="flex flex-wrap gap-2 mb-3">{selectedEvent.industry_tags.map(t=><SkillChip key={t} label={t}/>)}</div>
+                )}
+                <h2 className="text-2xl font-bold text-white leading-tight">{selectedEvent.title}</h2>
+                <div className="text-white/55 text-sm mt-1.5">Hosted by {selectedEvent.creator?.name||"Community"}</div>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Status badge */}
+                <div className="flex items-center gap-2">
+                  {selectedEvent.past
+                    ? <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(239,68,68,0.15)",color:"#f87171"}}>● Event Ended</span>
+                    : selectedEvent.attending
+                    ? <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(16,185,129,0.15)",color:"#34d399"}}>✓ You're Registered</span>
+                    : selectedEvent.full
+                    ? <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(239,68,68,0.15)",color:"#f87171"}}>● Fully Booked</span>
+                    : <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(16,185,129,0.15)",color:"#34d399"}}>● Open for Registration</span>}
+                </div>
+
+                {/* Description */}
+                <div>
+                  <div className="text-white/35 text-xs font-semibold uppercase tracking-wider mb-2">About this event</div>
+                  <p className="text-white/70 text-sm leading-relaxed">{selectedEvent.description||"No description provided."}</p>
+                </div>
+
+                {/* Details grid */}
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                    <span className="text-xl">📅</span>
+                    <div><div className="text-white/40 text-xs">Date</div><div className="text-white text-sm font-medium">{fmtDate(selectedEvent.event_date)}</div></div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                    <span className="text-xl">🕐</span>
+                    <div><div className="text-white/40 text-xs">Time</div><div className="text-white text-sm font-medium">{fmtTime(selectedEvent.event_date)}</div></div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                    <span className="text-xl">📍</span>
+                    <div><div className="text-white/40 text-xs">Location</div><div className="text-white text-sm font-medium">{selectedEvent.location||"TBA"}</div></div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                    <span className="text-xl">👥</span>
+                    <div className="flex-1">
+                      <div className="text-white/40 text-xs">Attendance</div>
+                      <div className="text-white text-sm font-medium">
+                        {selectedEvent.cnt}{selectedEvent.max_attendees?` of ${selectedEvent.max_attendees}`:""} registered
+                      </div>
+                      {selectedEvent.max_attendees&&(
+                        <div className="mt-2">
+                          <div className="h-1.5 rounded-full overflow-hidden" style={{background:"rgba(255,255,255,0.08)"}}>
+                            <div className="h-full rounded-full" style={{width:`${Math.min(100,(selectedEvent.cnt/selectedEvent.max_attendees)*100)}%`,background:selectedEvent.full?"#f87171":"linear-gradient(90deg,#7c6fe0,#a78bfa)"}}/>
+                          </div>
+                          <div className="text-white/35 text-xs mt-1">{selectedEvent.spotsLeft>0?`${selectedEvent.spotsLeft} spots remaining`:"No spots available"}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action */}
+                {!selectedEvent.past&&(
+                  selectedEvent.attending
+                    ? <OutlineBtn onClick={()=>{toggleAttend(selectedEvent.id);setSelectedEvent(null);}} className="w-full">✓ Cancel Registration</OutlineBtn>
+                    : <PrimaryBtn onClick={()=>{toggleAttend(selectedEvent.id);setSelectedEvent(null);}} className="w-full" disabled={!!selectedEvent.full}>
+                        {selectedEvent.full?"Event Full":"Register to Attend"}
+                      </PrimaryBtn>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -933,6 +1024,122 @@ function ManageTab({ showToast }) {
 }
 
 // ════════════════════════════════════════════════════════
+// ONBOARDING MODAL (new user profile setup)
+// ════════════════════════════════════════════════════════
+function OnboardingModal({ user, onComplete }) {
+  const [step, setStep] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [data, setData] = useState({name:user?.user_metadata?.full_name||"",role:"",location:"",bio:"",skills:[],project_name:"",project_pitch:"",project_industry:"",mobile:""});
+  const [newSkill, setNewSkill] = useState("");
+
+  function addSkill(e){ if(e.key==="Enter"&&newSkill.trim()&&!data.skills.includes(newSkill.trim())){ setData(d=>({...d,skills:[...d.skills,newSkill.trim()]})); setNewSkill(""); } }
+
+  const canStep1 = data.name.trim() && data.role.trim() && data.location.trim();
+  const canStep2 = data.bio.trim() && data.skills.length>0;
+
+  async function finish() {
+    setSaving(true);
+    await onComplete(data);
+    setSaving(false);
+  }
+
+  const field = (label,k,ph,type="text") => (
+    <div className="space-y-1.5">
+      <label className="text-white/40 text-xs font-medium uppercase tracking-wider">{label}</label>
+      <input type={type} value={data[k]} onChange={e=>setData(d=>({...d,[k]:e.target.value}))} placeholder={ph}
+        className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
+        style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+    </div>
+  );
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4">
+      <motion.div initial={{y:60}} animate={{y:0}} className="w-full max-w-lg overflow-y-auto rounded-t-3xl md:rounded-3xl" style={{maxHeight:"92vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
+        {/* Header */}
+        <div className="p-6 pb-4" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.25),rgba(167,139,250,0.12))"}}>
+          <div className="text-3xl mb-2">👋</div>
+          <h2 className="text-2xl font-bold text-white">Welcome to CoFounder AI!</h2>
+          <p className="text-white/55 text-sm mt-1">Let's set up your profile so others can find you. Step {step} of 3.</p>
+          {/* Progress */}
+          <div className="flex gap-1.5 mt-4">
+            {[1,2,3].map(s=>(
+              <div key={s} className="flex-1 h-1.5 rounded-full" style={{background:s<=step?"linear-gradient(90deg,#7c6fe0,#a78bfa)":"rgba(255,255,255,0.1)"}}/>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <AnimatePresence mode="wait">
+            {step===1&&(
+              <motion.div key="s1" initial={{opacity:0,x:20}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-20}} className="space-y-4">
+                <div className="text-white font-bold text-lg">About You</div>
+                {field("Full Name","name","Your name")}
+                {field("Role / Title","role","e.g. Founder, CTO, Mobile Lender")}
+                {field("Location","location","e.g. Melbourne, VIC")}
+              </motion.div>
+            )}
+            {step===2&&(
+              <motion.div key="s2" initial={{opacity:0,x:20}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-20}} className="space-y-4">
+                <div className="text-white font-bold text-lg">Your Background</div>
+                <div className="space-y-1.5">
+                  <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Bio / Background</label>
+                  <textarea value={data.bio} onChange={e=>setData(d=>({...d,bio:e.target.value}))} placeholder="Tell us about your professional background and experience…" rows={4}
+                    className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none resize-none"
+                    style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Skills (Enter to add)</label>
+                  <div className="flex flex-wrap gap-2 mb-2">{data.skills.map((s,i)=>(
+                    <button key={i} onClick={()=>setData(d=>({...d,skills:d.skills.filter((_,j)=>j!==i)}))}
+                      className="px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa",border:"1px solid rgba(124,111,224,0.25)"}}>
+                      {s} <span className="opacity-50">×</span>
+                    </button>
+                  ))}</div>
+                  <input value={newSkill} onChange={e=>setNewSkill(e.target.value)} onKeyDown={addSkill} placeholder="e.g. Property, Lending, Marketing…"
+                    className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
+                    style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+                </div>
+              </motion.div>
+            )}
+            {step===3&&(
+              <motion.div key="s3" initial={{opacity:0,x:20}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-20}} className="space-y-4">
+                <div className="text-white font-bold text-lg">Your Business / Project</div>
+                <p className="text-white/45 text-sm -mt-2">Optional — but helps you find the right co-founder.</p>
+                {field("Business / Project Name","project_name","e.g. CBA Mobile Lending")}
+                <div className="space-y-1.5">
+                  <label className="text-white/40 text-xs font-medium uppercase tracking-wider">What are you looking for?</label>
+                  <textarea value={data.project_pitch} onChange={e=>setData(d=>({...d,project_pitch:e.target.value}))} placeholder="e.g. Looking for a referral partner in the property area…" rows={3}
+                    className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none resize-none"
+                    style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Industry</label>
+                  <div className="flex flex-wrap gap-2">{INDUSTRIES.map(ind=>(
+                    <button key={ind} onClick={()=>setData(d=>({...d,project_industry:ind}))}
+                      className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all"
+                      style={data.project_industry===ind?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>{ind}</button>
+                  ))}</div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Nav buttons */}
+          <div className="flex gap-3 pt-2">
+            {step>1&&<OutlineBtn onClick={()=>setStep(step-1)} className="flex-1">← Back</OutlineBtn>}
+            {step<3
+              ? <PrimaryBtn onClick={()=>setStep(step+1)} disabled={step===1?!canStep1:!canStep2} className="flex-1">Continue →</PrimaryBtn>
+              : <PrimaryBtn onClick={finish} loading={saving} className="flex-1">Complete Setup ✓</PrimaryBtn>}
+          </div>
+          {step===1&&!canStep1&&<p className="text-white/30 text-xs text-center">Fill in name, role and location to continue</p>}
+          {step===2&&!canStep2&&<p className="text-white/30 text-xs text-center">Add a bio and at least one skill to continue</p>}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
 // ROOT APP
 // ════════════════════════════════════════════════════════
 export default function App() {
@@ -940,6 +1147,7 @@ export default function App() {
   const [profile,setProfile]=useState(null);
   const [tab,setTab]=useState("events");
   const [toast,setToast]=useState(null);
+  const [showOnboard,setShowOnboard]=useState(false);
 
   const showToast=useCallback((msg,type="success")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3200); },[]);
 
@@ -951,12 +1159,27 @@ export default function App() {
 
   async function loadProfile(u) {
     let{data}=await supabase.from("profiles").select("*").eq("id",u.id).single();
+    let isNew=false;
     if(!data){
+      isNew=true;
       const{data:created}=await supabase.from("profiles").upsert({id:u.id,email:u.email,name:u.user_metadata?.full_name||u.email?.split("@")[0],avatar_url:u.user_metadata?.avatar_url,is_admin:u.email===ADMIN_EMAIL,is_approved:u.email===ADMIN_EMAIL}).select().single();
       data=created;
     }
     if(u.email===ADMIN_EMAIL&&!data?.is_admin){ await supabase.from("profiles").update({is_admin:true,is_approved:true}).eq("id",u.id); data={...data,is_admin:true,is_approved:true}; }
     setProfile(data);
+    // Show onboarding for new users OR users who haven't filled in their background
+    if((isNew || !data?.role || !data?.bio || !(data?.skills?.length)) && u.email!==ADMIN_EMAIL){
+      setShowOnboard(true);
+    }
+  }
+
+  async function completeOnboarding(onboardData) {
+    try {
+      await supabase.from("profiles").update({...onboardData, updated_at:new Date().toISOString()}).eq("id",session.user.id);
+      setProfile(p=>({...p,...onboardData}));
+      setShowOnboard(false);
+      showToast("Welcome aboard! Your profile is set up ✓");
+    } catch(e){ showToast(e.message,"error"); }
   }
 
   if(session===undefined) return (
@@ -1076,6 +1299,7 @@ export default function App() {
         )}
       </nav>
 
+      <AnimatePresence>{showOnboard&&user&&<OnboardingModal key="onboard" user={user} onComplete={completeOnboarding}/>}</AnimatePresence>
       <AnimatePresence>{toast&&<Toast key="t" msg={toast.msg} type={toast.type}/>}</AnimatePresence>
     </div>
   );
