@@ -427,14 +427,15 @@ function MatchTab({ user, profile, isApproved, showToast }) {
 
   useEffect(() => {
     supabase.from("profiles").select("*").neq("id", user?.id||"x").eq("is_approved",true)
-      .then(({data})=>setRealProfiles(data||[]));
+      .then(({data, error})=>{ if(!error && data?.length) setRealProfiles(data); })
+      .catch(()=>{});
     if (user) {
       supabase.from("match_requests").select("*").or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
         .then(({data})=>{
           const m={};
           (data||[]).forEach(r=>{ const o=r.from_user_id===user.id?r.to_user_id:r.from_user_id; m[o]=r; });
           setMatchMap(m);
-        });
+        }).catch(()=>{});
     }
   }, [user]);
 
@@ -770,13 +771,20 @@ function EventsTab({ user, isApproved, showToast }) {
   const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[]});
 
   async function load() {
-    const {data:evs} = await supabase.from("events").select("*, creator:profiles(name,avatar_url,id)").order("event_date");
-    const realEvs = evs||[];
-    // Fall back to demo events if no real events exist yet
-    setEvents(realEvs.length > 0 ? realEvs : DEMO_EVENTS);
-    if (realEvs.length) {
-      const {data:att} = await supabase.from("event_attendees").select("*").in("event_id",realEvs.map(e=>e.id));
-      const m={}; (att||[]).forEach(a=>{ if(!m[a.event_id]) m[a.event_id]=[]; m[a.event_id].push(a.user_id); }); setAttMap(m);
+    try {
+      const {data:evs, error} = await supabase.from("events").select("*, creator:profiles(name,avatar_url,id)").order("event_date");
+      if (error || !evs || evs.length === 0) {
+        // Table doesn't exist yet or no events — show demo events
+        setEvents(DEMO_EVENTS);
+      } else {
+        setEvents(evs);
+        const {data:att} = await supabase.from("event_attendees").select("*").in("event_id", evs.map(e=>e.id));
+        const m={}; (att||[]).forEach(a=>{ if(!m[a.event_id]) m[a.event_id]=[]; m[a.event_id].push(a.user_id); });
+        setAttMap(m);
+      }
+    } catch(e) {
+      // Any error — fall back to demo events so the page always shows content
+      setEvents(DEMO_EVENTS);
     }
     setLoading(false);
   }
