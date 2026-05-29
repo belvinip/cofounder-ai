@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = "https://pcvcqvkjxlvbourkenmx.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjdmNxdmtqeGx2Ym91cmtlbm14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwODk0NDMsImV4cCI6MjA5NDY2NTQ0M30.sbWfbxjtKpqpPBqWvE39fU-xk7H_tIVJPPaHdY36MRM";
+const SUPABASE_URL = "https://xvvjruoeggohktflwnak.supabase.co";
+const SUPABASE_ANON = "sb_publishable_Q-vS4CYYvQSsGp0rN8OhwQ_wyDXAC6p";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 const ADMIN_EMAIL = "belvinip@gmail.com";
