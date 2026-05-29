@@ -204,8 +204,128 @@ const GoogleIcon = () => (
 );
 
 // ════════════════════════════════════════════════════════
-// CHAT MODAL
+// LOGIN MODAL (Sign In / Register popup)
 // ════════════════════════════════════════════════════════
+function LoginModal({ onClose, showToast }) {
+  const [mode, setMode] = useState("signin"); // signin | register
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleEmailAuth() {
+    if(!email.trim()||!password.trim()){ showToast("Email and password required","error"); return; }
+    setLoading(true);
+    try {
+      if(mode==="register"){
+        const { error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { data: { full_name: name.trim()||email.split("@")[0] } },
+        });
+        if(error) throw error;
+        showToast("Account created! Check your email to confirm, then sign in ✓");
+        setMode("signin");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if(error) throw error;
+        showToast("Signed in ✓");
+        onClose();
+      }
+    } catch(e) {
+      showToast(e.message||"Authentication failed","error");
+    }
+    setLoading(false);
+  }
+
+  function handleGoogle() {
+    supabase.auth.signInWithOAuth({ provider:"google", options:{ redirectTo: window.location.origin } });
+  }
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <motion.div initial={{scale:0.92,y:20}} animate={{scale:1,y:0}} exit={{scale:0.92,y:20}}
+        className="w-full max-w-md rounded-3xl overflow-hidden relative"
+        style={{background:"#0b0e18",border:`1px solid ${BORDER}`,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+
+        <button onClick={onClose} className="absolute top-5 right-5 z-10 w-8 h-8 rounded-full flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">✕</button>
+
+        <div className="p-8">
+          {/* Logo */}
+          <div className="flex justify-center mb-5">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl" style={{background:"linear-gradient(135deg,#7cb9e8,#7c6fe0)",boxShadow:"0 8px 24px rgba(124,111,224,0.4)"}}>✦</div>
+          </div>
+
+          {/* Title */}
+          <h2 className="text-3xl font-bold text-center mb-2" style={{background:"linear-gradient(135deg,#7cb9e8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+            {mode==="signin"?"Sign In Required":"Create Account"}
+          </h2>
+          <p className="text-white/45 text-center text-sm mb-6">
+            {mode==="signin"?"Sign in to continue with this action":"Register to join the community"}
+          </p>
+
+          {/* Tab switch */}
+          <div className="flex p-1 rounded-2xl mb-6" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+            <button onClick={()=>setMode("signin")}
+              className="flex-1 py-3 rounded-xl text-sm font-bold transition-all"
+              style={mode==="signin"?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#0b0e18"}:{color:"rgba(255,255,255,0.6)"}}>
+              Sign In
+            </button>
+            <button onClick={()=>setMode("register")}
+              className="flex-1 py-3 rounded-xl text-sm font-bold transition-all"
+              style={mode==="register"?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#0b0e18"}:{color:"rgba(255,255,255,0.6)"}}>
+              Register
+            </button>
+          </div>
+
+          {/* Fields */}
+          <div className="space-y-4">
+            {mode==="register"&&(
+              <div className="space-y-2">
+                <label className="text-white font-semibold text-sm">Full Name</label>
+                <input value={name} onChange={e=>setName(e.target.value)} placeholder="Enter your name"
+                  className="w-full rounded-2xl px-4 py-3.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500/50 transition-all"
+                  style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}/>
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="text-white font-semibold text-sm">Email</label>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Enter your email"
+                className="w-full rounded-2xl px-4 py-3.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500/50 transition-all"
+                style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}/>
+            </div>
+            <div className="space-y-2">
+              <label className="text-white font-semibold text-sm">Password</label>
+              <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleEmailAuth()} placeholder="Enter your password"
+                className="w-full rounded-2xl px-4 py-3.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-indigo-500/50 transition-all"
+                style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}/>
+            </div>
+
+            <PrimaryBtn onClick={handleEmailAuth} loading={loading} className="w-full">
+              {mode==="signin"?"⇥ Sign In":"Create Account"}
+            </PrimaryBtn>
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-6">
+            <div className="flex-1 h-px" style={{background:BORDER}}/>
+            <span className="text-white/30 text-xs font-semibold uppercase tracking-wider">Or continue with</span>
+            <div className="flex-1 h-px" style={{background:BORDER}}/>
+          </div>
+
+          {/* Google */}
+          <button onClick={handleGoogle}
+            className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl text-sm font-semibold text-white transition-all hover:bg-white/[0.06]"
+            style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+            <GoogleIcon/> Google
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
 function ChatModal({ matchId, other, me, onClose }) {
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState("");
@@ -1148,6 +1268,7 @@ export default function App() {
   const [tab,setTab]=useState("events");
   const [toast,setToast]=useState(null);
   const [showOnboard,setShowOnboard]=useState(false);
+  const [showLogin,setShowLogin]=useState(false);
 
   const showToast=useCallback((msg,type="success")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3200); },[]);
 
@@ -1245,7 +1366,7 @@ export default function App() {
               <button onClick={()=>supabase.auth.signOut()} className="text-white/30 hover:text-white/60 text-xs ml-2 transition-colors">Sign out</button>
             </div>
           ):(
-            <PrimaryBtn onClick={()=>supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin}})} small>
+            <PrimaryBtn onClick={()=>setShowLogin(true)} small>
               <GoogleIcon/> Sign in
             </PrimaryBtn>
           )}
@@ -1260,8 +1381,8 @@ export default function App() {
               <div className="text-5xl mb-4">🔐</div>
               <h2 className="text-white font-bold text-xl mb-2">Sign in required</h2>
               <p className="text-white/40 text-sm mb-8">Access your profile, messages and more</p>
-              <PrimaryBtn className="mx-auto" onClick={()=>supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin}})}>
-                <GoogleIcon/> Continue with Google
+              <PrimaryBtn className="mx-auto" onClick={()=>setShowLogin(true)}>
+                <GoogleIcon/> Sign In to Continue
               </PrimaryBtn>
             </motion.div>
           ):tab==="matching"?<MatchTab key="m" user={user} isApproved={isApproved} showToast={showToast}/>
@@ -1290,7 +1411,7 @@ export default function App() {
         {/* Sign in bar if not logged in */}
         {!user&&(
           <div className="px-5 pb-4 pt-1" style={{borderTop:`1px solid ${BORDER}`}}>
-            <button onClick={()=>supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin}})}
+            <button onClick={()=>setShowLogin(true)}
               className="w-full flex items-center justify-center gap-2.5 py-3 rounded-2xl text-sm font-semibold text-white transition-all"
               style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",boxShadow:"0 4px 20px rgba(124,111,224,0.35)"}}>
               <GoogleIcon/> Sign in with Google
@@ -1299,6 +1420,7 @@ export default function App() {
         )}
       </nav>
 
+      <AnimatePresence>{showLogin&&!user&&<LoginModal key="login" onClose={()=>setShowLogin(false)} showToast={showToast}/>}</AnimatePresence>
       <AnimatePresence>{showOnboard&&user&&<OnboardingModal key="onboard" user={user} onComplete={completeOnboarding}/>}</AnimatePresence>
       <AnimatePresence>{toast&&<Toast key="t" msg={toast.msg} type={toast.type}/>}</AnimatePresence>
     </div>
