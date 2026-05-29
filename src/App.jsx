@@ -22,36 +22,36 @@ const fmtTime = (ts) => new Date(ts).toLocaleTimeString("en-AU",{hour:"2-digit",
 
 // ─── 30 Demo Profiles ─────────────────────────────────────────────────────────
 const DEMO_PROFILES = [
-  { id:"d1",  name:"Alex Chen",        role:"CEO / Founder",       location:"San Francisco, CA",   bio:"Serial entrepreneur with 3 exits. Building at the intersection of AI and healthcare.",              skills:["AI/ML","Product","Strategy","Fundraising"],          project_name:"HealthAI",        project_industry:"HealthTech",  experience:8  },
-  { id:"d2",  name:"Priya Sharma",     role:"CTO",                 location:"New York, NY",         bio:"Full-stack engineer turned founder. Passionate about EdTech and democratising education.",          skills:["React","Node.js","System Design","FinTech"],          project_name:"EduChain",        project_industry:"EdTech",      experience:6  },
-  { id:"d3",  name:"Marcus Webb",      role:"CMO",                 location:"Austin, TX",           bio:"Growth hacker who scaled 2 startups to 1M+ users. Data-driven, obsessed with retention.",          skills:["Growth","Marketing","B2C","Analytics"],              project_name:"GrowthOS",        project_industry:"SaaS",        experience:5  },
-  { id:"d4",  name:"Sofia Russo",      role:"CPO / Design Lead",   location:"London, UK",           bio:"Design-led founder. Ex-unicorn design lead. Obsessed with beautiful, functional UX.",              skills:["UX","Branding","Figma","Web3"],                      project_name:"DesignDAO",       project_industry:"Web3",        experience:7  },
-  { id:"d5",  name:"Daniel Kim",       role:"CFO / COO",           location:"Singapore",            bio:"Finance & ops expert. Ex-Goldman Sachs. Loves turning messy cap tables into clean outcomes.",       skills:["Finance","Ops","Fundraising","B2B SaaS"],            project_name:"CapStack",        project_industry:"FinTech",     experience:9  },
-  { id:"d6",  name:"Yuki Tanaka",      role:"Blockchain Lead",     location:"Tokyo, Japan",         bio:"Blockchain architect and DeFi native. Building trustless systems for the real world.",              skills:["Solidity","Web3","Cryptography","Rust"],             project_name:"TrustLayer",      project_industry:"Web3",        experience:4  },
-  { id:"d7",  name:"Amara Okonkwo",    role:"Founder / CEO",       location:"Lagos, Nigeria",       bio:"Climate tech evangelist building carbon credit infrastructure for emerging markets.",               skills:["Climate","ESG","Strategy","B2B"],                    project_name:"CarbonBridge",    project_industry:"Climate",     experience:6  },
-  { id:"d8",  name:"Jake Morrison",    role:"Full-Stack Engineer",  location:"Berlin, Germany",     bio:"10x engineer who loves shipping fast. Built and sold 2 SaaS products bootstrapped.",               skills:["TypeScript","Go","Postgres","DevOps"],               project_name:"ShipFast",        project_industry:"SaaS",        experience:7  },
-  { id:"d9",  name:"Lin Wei",          role:"AI Researcher",       location:"Shanghai, China",      bio:"PhD in ML from MIT. Turned academic research into practical LLM applications at scale.",           skills:["LLMs","Python","MLOps","Research"],                  project_name:"ContextAI",       project_industry:"DeepTech",    experience:5  },
-  { id:"d10", name:"Rachel Torres",    role:"Head of Sales",       location:"Miami, FL",            bio:"0-to-$10M ARR sales leader. Built sales teams from scratch at 3 hypergrowth startups.",           skills:["Sales","B2B","CRM","Revenue Ops"],                   project_name:"SalesMatrix",     project_industry:"SaaS",        experience:8  },
-  { id:"d11", name:"Tom Blackwell",    role:"Hardware Engineer",   location:"Seattle, WA",          bio:"Ex-Apple hardware engineer. Bridging the gap between software intelligence and physical devices.",  skills:["Hardware","IoT","Embedded","C++"],                   project_name:"SenseGrid",       project_industry:"DeepTech",    experience:11 },
-  { id:"d12", name:"Nadia Petrov",     role:"Founder / CMO",       location:"Amsterdam, NL",        bio:"Brand builder and storyteller. Took 2 DTC brands from zero to $5M revenue in 18 months.",          skills:["Brand","DTC","Content","Paid Ads"],                  project_name:"StoryCommerce",   project_industry:"E-commerce",  experience:6  },
-  { id:"d13", name:"Carlos Mendez",    role:"CTO / Co-Founder",    location:"Mexico City, Mexico",  bio:"Fintech infrastructure builder. Helped 3 neobanks in LATAM launch their core banking stack.",      skills:["FinTech","Java","Microservices","Banking APIs"],     project_name:"NovoBanco",       project_industry:"FinTech",     experience:9  },
-  { id:"d14", name:"Isla MacGregor",   role:"Product Manager",     location:"Edinburgh, UK",        bio:"Product leader with deep expertise in consumer health apps and wearables.",                         skills:["Product","Health","User Research","Roadmapping"],   project_name:"PulseTrack",      project_industry:"HealthTech",  experience:5  },
-  { id:"d15", name:"Ravi Patel",       role:"DevOps / Infra Lead", location:"Bangalore, India",     bio:"Infrastructure wizard. Scaled systems from 10K to 10M users at a Bangalore unicorn.",             skills:["Kubernetes","AWS","Terraform","SRE"],                project_name:"CloudLaunch",     project_industry:"SaaS",        experience:7  },
-  { id:"d16", name:"Mei Yamamoto",     role:"CPO",                 location:"Osaka, Japan",         bio:"Consumer product expert. Launched 4 apps with 500K+ DAU combined on iOS and Android.",            skills:["Mobile","Swift","Kotlin","Product"],                 project_name:"DailyHabit",      project_industry:"Consumer",    experience:6  },
-  { id:"d17", name:"Ethan Brooks",     role:"Founder / CEO",       location:"Denver, CO",           bio:"EdTech entrepreneur. Previous company acquired by Coursera. Passionate about lifelong learning.",  skills:["EdTech","B2C","Curriculum","LMS"],                   project_name:"SkillPath",       project_industry:"EdTech",      experience:10 },
-  { id:"d18", name:"Zara Ahmed",       role:"UX / Product",        location:"Dubai, UAE",           bio:"Human-centred design champion. Designed products used by 20M+ people across the Middle East.",    skills:["UX","Design Systems","Research","Arabic UX"],       project_name:"MENADesign",      project_industry:"Consumer",    experience:7  },
-  { id:"d19", name:"Oliver Grant",     role:"CFO",                 location:"Zurich, Switzerland",  bio:"Ex-Credit Suisse. Structured funding for 10+ startups. Deep expertise in European VC landscape.",  skills:["Finance","VC","M&A","Fundraising"],                  project_name:"AlphaFund",       project_industry:"FinTech",     experience:14 },
-  { id:"d20", name:"Aisha Diallo",     role:"CEO / Founder",       location:"Nairobi, Kenya",       bio:"Building mobile-first financial tools for the unbanked across Sub-Saharan Africa.",               skills:["Mobile Money","Strategy","B2C","Ops"],               project_name:"PesaPlus",        project_industry:"FinTech",     experience:5  },
-  { id:"d21", name:"Ben Nakamura",     role:"ML Engineer",         location:"Toronto, Canada",      bio:"Computer vision specialist. 3 papers published at NeurIPS. Now applying research to retail AI.",   skills:["Computer Vision","PyTorch","MLOps","Retail AI"],    project_name:"ShelfSight",      project_industry:"DeepTech",    experience:6  },
-  { id:"d22", name:"Lena Kowalski",    role:"Growth Lead",         location:"Warsaw, Poland",       bio:"PLG expert who drove 300% YoY user growth at a SaaS unicorn in Warsaw.",                          skills:["PLG","SEO","Analytics","Experimentation"],           project_name:"LoopGrowth",      project_industry:"SaaS",        experience:5  },
-  { id:"d23", name:"David Osei",       role:"Founder / CTO",       location:"Accra, Ghana",         bio:"Full-stack builder focused on logistics tech. Making last-mile delivery work in Africa.",          skills:["React Native","Node.js","Logistics","Maps API"],    project_name:"LastMile",        project_industry:"E-commerce",  experience:4  },
-  { id:"d24", name:"Sophie Laurent",   role:"COO",                 location:"Paris, France",        bio:"Operations expert who scaled a French startup from 5 to 200 people in 3 years.",                  skills:["Ops","Hiring","Process","OKRs"],                     project_name:"ScaleOps",        project_industry:"SaaS",        experience:8  },
-  { id:"d25", name:"Kai Andersen",     role:"Founder / CTO",       location:"Copenhagen, Denmark",  bio:"Climate fintech builder. Combining open banking and carbon data to help consumers go green.",      skills:["Open Banking","APIs","Climate","TypeScript"],        project_name:"GreenLedger",     project_industry:"Climate",     experience:5  },
-  { id:"d26", name:"Fatima Al-Hassan", role:"CEO",                 location:"Riyadh, Saudi Arabia", bio:"Vision 2030 aligned founder. Building workforce reskilling platforms for the Saudi market.",       skills:["EdTech","Arabic","B2B","Government Relations"],     project_name:"ReskillSA",       project_industry:"EdTech",      experience:7  },
-  { id:"d27", name:"Marco Ferretti",   role:"Founder / Designer",  location:"Milan, Italy",         bio:"Ex-Fiat designer turned startup founder. Applying industrial design thinking to SaaS products.",  skills:["Industrial Design","UX","Brand","Figma"],           project_name:"FormProduct",     project_industry:"SaaS",        experience:9  },
-  { id:"d28", name:"Hana Park",        role:"Head of Data",        location:"Seoul, South Korea",   bio:"Data scientist turned product leader. Built recommendation engines serving 50M+ Korean users.",    skills:["Data Science","Recommender Systems","SQL","Python"],project_name:"PersonalizeKR",   project_industry:"Consumer",    experience:6  },
-  { id:"d29", name:"Tyler Washington", role:"Founder / CEO",       location:"Atlanta, GA",          bio:"HealthTech entrepreneur focused on closing the racial health equity gap through technology.",       skills:["HealthTech","Community","Strategy","Fundraising"],  project_name:"EquityHealth",    project_industry:"HealthTech",  experience:6  },
-  { id:"d30", name:"Nina Volkov",      role:"CTO",                 location:"Tallinn, Estonia",     bio:"Ex-Skype engineer. Building privacy-first communication tools for remote-first teams.",            skills:["Rust","WebRTC","Privacy","Distributed Systems"],    project_name:"SecureComms",     project_industry:"SaaS",        experience:10 },
+  { id:"d1",  name:"Alex Chen",        role:"CEO / Founder",       location:"Melbourne, VIC",   bio:"Serial entrepreneur with 3 exits. Building at the intersection of AI and healthcare.",              skills:["AI/ML","Product","Strategy","Fundraising"],          project_name:"HealthAI",        project_industry:"HealthTech",  experience:8  },
+  { id:"d2",  name:"Priya Sharma",     role:"CTO",                 location:"Sydney, NSW",         bio:"Full-stack engineer turned founder. Passionate about EdTech and democratising education.",          skills:["React","Node.js","System Design","FinTech"],          project_name:"EduChain",        project_industry:"EdTech",      experience:6  },
+  { id:"d3",  name:"Marcus Webb",      role:"CMO",                 location:"Brisbane, QLD",           bio:"Growth hacker who scaled 2 startups to 1M+ users. Data-driven, obsessed with retention.",          skills:["Growth","Marketing","B2C","Analytics"],              project_name:"GrowthOS",        project_industry:"SaaS",        experience:5  },
+  { id:"d4",  name:"Sofia Russo",      role:"CPO / Design Lead",   location:"Perth, WA",           bio:"Design-led founder. Ex-unicorn design lead. Obsessed with beautiful, functional UX.",              skills:["UX","Branding","Figma","Web3"],                      project_name:"DesignDAO",       project_industry:"Web3",        experience:7  },
+  { id:"d5",  name:"Daniel Kim",       role:"CFO / COO",           location:"Adelaide, SA",            bio:"Finance & ops expert. Ex-Goldman Sachs. Loves turning messy cap tables into clean outcomes.",       skills:["Finance","Ops","Fundraising","B2B SaaS"],            project_name:"CapStack",        project_industry:"FinTech",     experience:9  },
+  { id:"d6",  name:"Yuki Tanaka",      role:"Blockchain Lead",     location:"Gold Coast, QLD",         bio:"Blockchain architect and DeFi native. Building trustless systems for the real world.",              skills:["Solidity","Web3","Cryptography","Rust"],             project_name:"TrustLayer",      project_industry:"Web3",        experience:4  },
+  { id:"d7",  name:"Amara Okonkwo",    role:"Founder / CEO",       location:"Newcastle, NSW",       bio:"Climate tech evangelist building carbon credit infrastructure for emerging markets.",               skills:["Climate","ESG","Strategy","B2B"],                    project_name:"CarbonBridge",    project_industry:"Climate",     experience:6  },
+  { id:"d8",  name:"Jake Morrison",    role:"Full-Stack Engineer",  location:"Canberra, ACT",     bio:"10x engineer who loves shipping fast. Built and sold 2 SaaS products bootstrapped.",               skills:["TypeScript","Go","Postgres","DevOps"],               project_name:"ShipFast",        project_industry:"SaaS",        experience:7  },
+  { id:"d9",  name:"Lin Wei",          role:"AI Researcher",       location:"Melbourne, VIC",      bio:"PhD in ML from MIT. Turned academic research into practical LLM applications at scale.",           skills:["LLMs","Python","MLOps","Research"],                  project_name:"ContextAI",       project_industry:"DeepTech",    experience:5  },
+  { id:"d10", name:"Rachel Torres",    role:"Head of Sales",       location:"Sydney, NSW",            bio:"0-to-$10M ARR sales leader. Built sales teams from scratch at 3 hypergrowth startups.",           skills:["Sales","B2B","CRM","Revenue Ops"],                   project_name:"SalesMatrix",     project_industry:"SaaS",        experience:8  },
+  { id:"d11", name:"Tom Blackwell",    role:"Hardware Engineer",   location:"Brisbane, QLD",          bio:"Ex-Apple hardware engineer. Bridging the gap between software intelligence and physical devices.",  skills:["Hardware","IoT","Embedded","C++"],                   project_name:"SenseGrid",       project_industry:"DeepTech",    experience:11 },
+  { id:"d12", name:"Nadia Petrov",     role:"Founder / CMO",       location:"Perth, WA",        bio:"Brand builder and storyteller. Took 2 DTC brands from zero to $5M revenue in 18 months.",          skills:["Brand","DTC","Content","Paid Ads"],                  project_name:"StoryCommerce",   project_industry:"E-commerce",  experience:6  },
+  { id:"d13", name:"Carlos Mendez",    role:"CTO / Co-Founder",    location:"Adelaide, SA",  bio:"Fintech infrastructure builder. Helped 3 neobanks in LATAM launch their core banking stack.",      skills:["FinTech","Java","Microservices","Banking APIs"],     project_name:"NovoBanco",       project_industry:"FinTech",     experience:9  },
+  { id:"d14", name:"Isla MacGregor",   role:"Product Manager",     location:"Gold Coast, QLD",        bio:"Product leader with deep expertise in consumer health apps and wearables.",                         skills:["Product","Health","User Research","Roadmapping"],   project_name:"PulseTrack",      project_industry:"HealthTech",  experience:5  },
+  { id:"d15", name:"Ravi Patel",       role:"DevOps / Infra Lead", location:"Newcastle, NSW",     bio:"Infrastructure wizard. Scaled systems from 10K to 10M users at a Bangalore unicorn.",             skills:["Kubernetes","AWS","Terraform","SRE"],                project_name:"CloudLaunch",     project_industry:"SaaS",        experience:7  },
+  { id:"d16", name:"Mei Yamamoto",     role:"CPO",                 location:"Melbourne, VIC",         bio:"Consumer product expert. Launched 4 apps with 500K+ DAU combined on iOS and Android.",            skills:["Mobile","Swift","Kotlin","Product"],                 project_name:"DailyHabit",      project_industry:"Consumer",    experience:6  },
+  { id:"d17", name:"Ethan Brooks",     role:"Founder / CEO",       location:"Sydney, NSW",           bio:"EdTech entrepreneur. Previous company acquired by Coursera. Passionate about lifelong learning.",  skills:["EdTech","B2C","Curriculum","LMS"],                   project_name:"SkillPath",       project_industry:"EdTech",      experience:10 },
+  { id:"d18", name:"Zara Ahmed",       role:"UX / Product",        location:"Brisbane, QLD",           bio:"Human-centred design champion. Designed products used by 20M+ people across the Middle East.",    skills:["UX","Design Systems","Research","Arabic UX"],       project_name:"MENADesign",      project_industry:"Consumer",    experience:7  },
+  { id:"d19", name:"Oliver Grant",     role:"CFO",                 location:"Perth, WA",  bio:"Ex-Credit Suisse. Structured funding for 10+ startups. Deep expertise in European VC landscape.",  skills:["Finance","VC","M&A","Fundraising"],                  project_name:"AlphaFund",       project_industry:"FinTech",     experience:14 },
+  { id:"d20", name:"Aisha Diallo",     role:"CEO / Founder",       location:"Adelaide, SA",       bio:"Building mobile-first financial tools for the unbanked across Sub-Saharan Africa.",               skills:["Mobile Money","Strategy","B2C","Ops"],               project_name:"PesaPlus",        project_industry:"FinTech",     experience:5  },
+  { id:"d21", name:"Ben Nakamura",     role:"ML Engineer",         location:"Melbourne, VIC",      bio:"Computer vision specialist. 3 papers published at NeurIPS. Now applying research to retail AI.",   skills:["Computer Vision","PyTorch","MLOps","Retail AI"],    project_name:"ShelfSight",      project_industry:"DeepTech",    experience:6  },
+  { id:"d22", name:"Lena Kowalski",    role:"Growth Lead",         location:"Sydney, NSW",       bio:"PLG expert who drove 300% YoY user growth at a SaaS unicorn in Warsaw.",                          skills:["PLG","SEO","Analytics","Experimentation"],           project_name:"LoopGrowth",      project_industry:"SaaS",        experience:5  },
+  { id:"d23", name:"David Osei",       role:"Founder / CTO",       location:"Canberra, ACT",         bio:"Full-stack builder focused on logistics tech. Making last-mile delivery work in Africa.",          skills:["React Native","Node.js","Logistics","Maps API"],    project_name:"LastMile",        project_industry:"E-commerce",  experience:4  },
+  { id:"d24", name:"Sophie Laurent",   role:"COO",                 location:"Gold Coast, QLD",        bio:"Operations expert who scaled a French startup from 5 to 200 people in 3 years.",                  skills:["Ops","Hiring","Process","OKRs"],                     project_name:"ScaleOps",        project_industry:"SaaS",        experience:8  },
+  { id:"d25", name:"Kai Andersen",     role:"Founder / CTO",       location:"Newcastle, NSW",  bio:"Climate fintech builder. Combining open banking and carbon data to help consumers go green.",      skills:["Open Banking","APIs","Climate","TypeScript"],        project_name:"GreenLedger",     project_industry:"Climate",     experience:5  },
+  { id:"d26", name:"Fatima Al-Hassan", role:"CEO",                 location:"Perth, WA", bio:"Vision 2030 aligned founder. Building workforce reskilling platforms for the Saudi market.",       skills:["EdTech","Arabic","B2B","Government Relations"],     project_name:"ReskillSA",       project_industry:"EdTech",      experience:7  },
+  { id:"d27", name:"Marco Ferretti",   role:"Founder / Designer",  location:"Melbourne, VIC",         bio:"Ex-Fiat designer turned startup founder. Applying industrial design thinking to SaaS products.",  skills:["Industrial Design","UX","Brand","Figma"],           project_name:"FormProduct",     project_industry:"SaaS",        experience:9  },
+  { id:"d28", name:"Hana Park",        role:"Head of Data",        location:"Brisbane, QLD",   bio:"Data scientist turned product leader. Built recommendation engines serving 50M+ Korean users.",    skills:["Data Science","Recommender Systems","SQL","Python"],project_name:"PersonalizeKR",   project_industry:"Consumer",    experience:6  },
+  { id:"d29", name:"Tyler Washington", role:"Founder / CEO",       location:"Sydney, NSW",          bio:"HealthTech entrepreneur focused on closing the racial health equity gap through technology.",       skills:["HealthTech","Community","Strategy","Fundraising"],  project_name:"EquityHealth",    project_industry:"HealthTech",  experience:6  },
+  { id:"d30", name:"Nina Volkov",      role:"CTO",                 location:"Adelaide, SA",     bio:"Ex-Skype engineer. Building privacy-first communication tools for remote-first teams.",            skills:["Rust","WebRTC","Privacy","Distributed Systems"],    project_name:"SecureComms",     project_industry:"SaaS",        experience:10 },
 ];
 
 // ─── 30 Demo Events ───────────────────────────────────────────────────────────
@@ -60,36 +60,36 @@ const fd = (days,h=10,m=0) => { const d=new Date(_now); d.setDate(d.getDate()+da
 const pd = (days,h=18,m=0) => { const d=new Date(_now); d.setDate(d.getDate()-days); d.setHours(h,m,0,0); return d.toISOString(); };
 
 const DEMO_EVENTS = [
-  { id:"e1",  title:"AI Founders Breakfast",            description:"Casual morning meetup for founders building AI-first products. Share what you're working on over coffee and croissants.",          location:"WeWork, San Francisco",        event_date:fd(2,8,30),  max_attendees:25,  industry_tags:["DeepTech","SaaS"],            creator:{name:"Alex Chen",        id:"d1"  }, attendee_count:8  },
-  { id:"e2",  title:"FinTech Demo Day",                 description:"10 early-stage fintech founders pitch to a room of angels and VCs. Network afterwards with top investors in the space.",           location:"500 Startups, NYC",            event_date:fd(4,14,0),  max_attendees:80,  industry_tags:["FinTech"],                    creator:{name:"Daniel Kim",       id:"d5"  }, attendee_count:42 },
-  { id:"e3",  title:"Web3 Builders Hackathon",          description:"48-hour hackathon building DeFi and NFT primitives on Ethereum. $10K in prizes. Teams of 2–4.",                                   location:"TechHub, London",              event_date:fd(6,9,0),   max_attendees:120, industry_tags:["Web3"],                       creator:{name:"Sofia Russo",      id:"d4"  }, attendee_count:67 },
-  { id:"e4",  title:"EdTech Product Workshop",          description:"Hands-on workshop on building engaging learning experiences. Bring your laptop and a product idea.",                               location:"Online (Zoom)",                event_date:fd(3,16,0),  max_attendees:50,  industry_tags:["EdTech"],                     creator:{name:"Ethan Brooks",     id:"d17" }, attendee_count:29 },
-  { id:"e5",  title:"Climate Tech Pitch Night",         description:"Founders working on climate solutions pitch their ideas to a panel of impact investors. Q&A session follows.",                    location:"Climate House, Berlin",        event_date:fd(7,18,30), max_attendees:60,  industry_tags:["Climate"],                    creator:{name:"Amara Okonkwo",    id:"d7"  }, attendee_count:38 },
-  { id:"e6",  title:"SaaS Growth Masterclass",          description:"Deep dive into product-led growth strategies that worked for $10M+ ARR companies. Real data, real examples.",                    location:"Stripe HQ, San Francisco",     event_date:fd(5,10,0),  max_attendees:40,  industry_tags:["SaaS"],                       creator:{name:"Lena Kowalski",    id:"d22" }, attendee_count:31 },
-  { id:"e7",  title:"Founder Speed Dating",             description:"Find your co-founder in 90 minutes. 5-minute rounds with potential matches. Structured, efficient, and surprisingly fun.",        location:"Founders Club, Austin",        event_date:fd(8,18,0),  max_attendees:30,  industry_tags:["SaaS","FinTech","EdTech"],     creator:{name:"Marcus Webb",      id:"d3"  }, attendee_count:22 },
-  { id:"e8",  title:"HealthTech Investor Roundtable",   description:"Closed-door roundtable connecting HealthTech founders with 8 Series A investors. Application required.",                          location:"a16z, Menlo Park",             event_date:fd(10,13,0), max_attendees:16,  industry_tags:["HealthTech"],                 creator:{name:"Tyler Washington", id:"d29" }, attendee_count:12 },
-  { id:"e9",  title:"Women in DeepTech Mixer",          description:"Monthly mixer celebrating women building frontier technology. Allies welcome. Great speakers, better networking.",                 location:"Google Campus, Zurich",        event_date:fd(9,17,30), max_attendees:70,  industry_tags:["DeepTech","Climate"],         creator:{name:"Zara Ahmed",       id:"d18" }, attendee_count:45 },
-  { id:"e10", title:"Open Source Dev Meetup",           description:"Monthly gathering for open source contributors and founders. Lightning talks on tooling, infra, and developer experience.",       location:"Basecamp, Chicago",            event_date:fd(11,18,0), max_attendees:45,  industry_tags:["SaaS","DeepTech"],            creator:{name:"Nina Volkov",      id:"d30" }, attendee_count:33 },
-  { id:"e11", title:"E-commerce Founders Lunch",        description:"Intimate lunch for founders in e-commerce and DTC. Share challenges, swap playbooks, and make genuine connections.",              location:"Soho House, NYC",              event_date:fd(12,12,30),max_attendees:20,  industry_tags:["E-commerce"],                 creator:{name:"Nadia Petrov",     id:"d12" }, attendee_count:14 },
-  { id:"e12", title:"Mobile-First Product Summit",      description:"Full-day summit on building exceptional mobile products. Speakers from Duolingo, Spotify, and Calm.",                            location:"Convention Centre, Singapore", event_date:fd(14,9,0),  max_attendees:200, industry_tags:["Consumer","EdTech"],          creator:{name:"Mei Yamamoto",     id:"d16" }, attendee_count:128},
-  { id:"e13", title:"Africa Tech Founder Circle",       description:"Monthly circle for African founders building pan-African or global companies. Peer support and investor intros.",                 location:"iHub, Nairobi",                event_date:fd(5,17,0),  max_attendees:35,  industry_tags:["FinTech","E-commerce"],       creator:{name:"Aisha Diallo",     id:"d20" }, attendee_count:19 },
-  { id:"e14", title:"B2B SaaS Metrics Deep Dive",       description:"Workshop on the metrics that matter for B2B SaaS. NRR, CAC payback, magic number — with real benchmarks.",                      location:"Online (Google Meet)",         event_date:fd(6,15,0),  max_attendees:100, industry_tags:["SaaS"],                       creator:{name:"Sophie Laurent",   id:"d24" }, attendee_count:73 },
-  { id:"e15", title:"Hardware & IoT Builders Meetup",   description:"For founders building in the physical world. Demos, teardowns, and war stories from the supply chain trenches.",                 location:"Pier 9, San Francisco",        event_date:fd(15,11,0), max_attendees:40,  industry_tags:["DeepTech"],                   creator:{name:"Tom Blackwell",    id:"d11" }, attendee_count:26 },
-  { id:"e16", title:"MENA Startup Showcase",            description:"Showcase of the most exciting startups from the Middle East and North Africa. Gulf and London investors attending.",              location:"DIFC, Dubai",                  event_date:fd(18,14,0), max_attendees:150, industry_tags:["FinTech","EdTech","Consumer"], creator:{name:"Zara Ahmed",       id:"d18" }, attendee_count:89 },
-  { id:"e17", title:"Privacy-First Product Talk",       description:"How to build products that respect user privacy without sacrificing growth. Case studies from Signal, Proton, and Brave.",       location:"Online (YouTube Live)",        event_date:fd(3,19,0),  max_attendees:null,industry_tags:["SaaS","DeepTech"],            creator:{name:"Nina Volkov",      id:"d30" }, attendee_count:201},
-  { id:"e18", title:"Seed Funding Panel",               description:"5 seed investors break down what they look for. Bring your deck and get brutally honest feedback in small groups.",              location:"YC Campus, Mountain View",     event_date:fd(20,14,0), max_attendees:60,  industry_tags:["SaaS","FinTech","HealthTech"], creator:{name:"Oliver Grant",     id:"d19" }, attendee_count:47 },
-  { id:"e19", title:"Rust & Systems Programming Night", description:"Lightning talks on Rust in production, WebAssembly, and distributed systems. For engineers who love low-level.",                 location:"Mozilla HQ, San Francisco",    event_date:fd(13,18,30),max_attendees:50,  industry_tags:["DeepTech","SaaS"],            creator:{name:"Nina Volkov",      id:"d30" }, attendee_count:34 },
-  { id:"e20", title:"Impact Investing Breakfast",       description:"Connecting impact-focused founders with patient capital. Focus on climate, health equity, and financial inclusion.",              location:"Pemberton Hall, London",       event_date:fd(7,8,30),  max_attendees:30,  industry_tags:["Climate","HealthTech"],        creator:{name:"Amara Okonkwo",    id:"d7"  }, attendee_count:21 },
-  { id:"e21", title:"Design Systems Workshop",          description:"Hands-on workshop building a component library from scratch in Figma and React. Take home a production-ready design system.",    location:"Figma HQ, San Francisco",      event_date:fd(9,10,0),  max_attendees:24,  industry_tags:["SaaS","Consumer"],            creator:{name:"Sofia Russo",      id:"d4"  }, attendee_count:18 },
-  { id:"e22", title:"LLM Application Builders Meetup",  description:"Monthly meetup for developers building on top of GPT, Claude, and Gemini. Show and tell, debugging sessions, best practices.",  location:"OpenAI Office, SF",            event_date:fd(16,18,0), max_attendees:80,  industry_tags:["DeepTech","SaaS"],            creator:{name:"Lin Wei",          id:"d9"  }, attendee_count:62 },
-  { id:"e23", title:"Revenue Operations Summit",        description:"For RevOps leaders and founders wanting to build a world-class GTM machine. Tools, processes, and team structures.",              location:"Salesforce Tower, NYC",        event_date:fd(21,9,0),  max_attendees:90,  industry_tags:["SaaS"],                       creator:{name:"Rachel Torres",    id:"d10" }, attendee_count:55 },
-  { id:"e24", title:"Nordic Founders Meetup",           description:"Gathering for Scandinavian founders and those building for Nordic markets. Saunas, great coffee, and genuine conversations.",    location:"Slush HQ, Helsinki",           event_date:fd(25,17,0), max_attendees:55,  industry_tags:["Climate","SaaS"],             creator:{name:"Kai Andersen",     id:"d25" }, attendee_count:40 },
-  { id:"e25", title:"Consumer App Growth Workshop",     description:"Tactical workshop: push notifications, onboarding flows, virality loops, and retention strategies for consumer apps.",           location:"Online (Zoom)",                event_date:fd(4,11,0),  max_attendees:75,  industry_tags:["Consumer"],                   creator:{name:"Mei Yamamoto",     id:"d16" }, attendee_count:58 },
-  { id:"e26", title:"Pitch Perfect — Founder Bootcamp", description:"Two-day intensive bootcamp on nailing your investor pitch. Deck review, mock pitches, and coaching from ex-VCs.",               location:"General Assembly, London",     event_date:fd(28,9,0),  max_attendees:20,  industry_tags:["SaaS","FinTech","HealthTech"], creator:{name:"Oliver Grant",     id:"d19" }, attendee_count:15 },
-  { id:"e27", title:"Korea Tech Networking Night",      description:"For founders building in or for South Korea and the broader APAC market. Investors from SoftBank and Kakao Ventures.",          location:"COEX, Seoul",                  event_date:fd(11,18,30),max_attendees:100, industry_tags:["Consumer","DeepTech"],        creator:{name:"Hana Park",        id:"d28" }, attendee_count:76 },
-  { id:"e28", title:"HealthTech Regulatory Q&A",        description:"Expert panel on navigating FDA, CE Mark, and TGA approval for digital health products. Ask your burning compliance questions.",  location:"Online (Zoom)",                event_date:fd(17,14,0), max_attendees:60,  industry_tags:["HealthTech"],                 creator:{name:"Isla MacGregor",   id:"d14" }, attendee_count:43 },
-  { id:"e29", title:"Startup Visa & Global Expansion",  description:"How to set up your company for global growth. Tax structures, visa options, EOR providers, and banking across borders.",        location:"Stripe Atlas HQ, Dublin",      event_date:fd(22,10,0), max_attendees:45,  industry_tags:["SaaS","FinTech"],             creator:{name:"Jake Morrison",    id:"d8"  }, attendee_count:30 },
-  { id:"e30", title:"Founder Stories: The Hard Parts",  description:"Founders share the moments they almost quit — and what kept them going. Raw, unfiltered, deeply human conversations.",          location:"Village Underground, London",  event_date:pd(3,19,0),  max_attendees:80,  industry_tags:["SaaS","FinTech","EdTech"],    creator:{name:"Marcus Webb",      id:"d3"  }, attendee_count:72 },
+  { id:"e1",  title:"AI Founders Breakfast",            description:"Casual morning meetup for founders building AI-first products. Share what you're working on over coffee and croissants.",          location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(2,8,30),  max_attendees:25,  industry_tags:["DeepTech","SaaS"],            creator:{name:"Alex Chen",        id:"d1"  }, attendee_count:8  },
+  { id:"e2",  title:"FinTech Demo Day",                 description:"10 early-stage fintech founders pitch to a room of angels and VCs. Network afterwards with top investors in the space.",           location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",            event_date:fd(4,14,0),  max_attendees:80,  industry_tags:["FinTech"],                    creator:{name:"Daniel Kim",       id:"d5"  }, attendee_count:42 },
+  { id:"e3",  title:"Web3 Builders Hackathon",          description:"48-hour hackathon building DeFi and NFT primitives on Ethereum. $10K in prizes. Teams of 2–4.",                                   location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",              event_date:fd(6,9,0),   max_attendees:120, industry_tags:["Web3"],                       creator:{name:"Sofia Russo",      id:"d4"  }, attendee_count:67 },
+  { id:"e4",  title:"EdTech Product Workshop",          description:"Hands-on workshop on building engaging learning experiences. Bring your laptop and a product idea.",                               location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                event_date:fd(3,16,0),  max_attendees:50,  industry_tags:["EdTech"],                     creator:{name:"Ethan Brooks",     id:"d17" }, attendee_count:29 },
+  { id:"e5",  title:"Climate Tech Pitch Night",         description:"Founders working on climate solutions pitch their ideas to a panel of impact investors. Q&A session follows.",                    location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(7,18,30), max_attendees:60,  industry_tags:["Climate"],                    creator:{name:"Amara Okonkwo",    id:"d7"  }, attendee_count:38 },
+  { id:"e6",  title:"SaaS Growth Masterclass",          description:"Deep dive into product-led growth strategies that worked for $10M+ ARR companies. Real data, real examples.",                    location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",     event_date:fd(5,10,0),  max_attendees:40,  industry_tags:["SaaS"],                       creator:{name:"Lena Kowalski",    id:"d22" }, attendee_count:31 },
+  { id:"e7",  title:"Founder Speed Dating",             description:"Find your co-founder in 90 minutes. 5-minute rounds with potential matches. Structured, efficient, and surprisingly fun.",        location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(8,18,0),  max_attendees:30,  industry_tags:["SaaS","FinTech","EdTech"],     creator:{name:"Marcus Webb",      id:"d3"  }, attendee_count:22 },
+  { id:"e8",  title:"HealthTech Investor Roundtable",   description:"Closed-door roundtable connecting HealthTech founders with 8 Series A investors. Application required.",                          location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",             event_date:fd(10,13,0), max_attendees:16,  industry_tags:["HealthTech"],                 creator:{name:"Tyler Washington", id:"d29" }, attendee_count:12 },
+  { id:"e9",  title:"Women in DeepTech Mixer",          description:"Monthly mixer celebrating women building frontier technology. Allies welcome. Great speakers, better networking.",                 location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(9,17,30), max_attendees:70,  industry_tags:["DeepTech","Climate"],         creator:{name:"Zara Ahmed",       id:"d18" }, attendee_count:45 },
+  { id:"e10", title:"Open Source Dev Meetup",           description:"Monthly gathering for open source contributors and founders. Lightning talks on tooling, infra, and developer experience.",       location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",            event_date:fd(11,18,0), max_attendees:45,  industry_tags:["SaaS","DeepTech"],            creator:{name:"Nina Volkov",      id:"d30" }, attendee_count:33 },
+  { id:"e11", title:"E-commerce Founders Lunch",        description:"Intimate lunch for founders in e-commerce and DTC. Share challenges, swap playbooks, and make genuine connections.",              location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",              event_date:fd(12,12,30),max_attendees:20,  industry_tags:["E-commerce"],                 creator:{name:"Nadia Petrov",     id:"d12" }, attendee_count:14 },
+  { id:"e12", title:"Mobile-First Product Summit",      description:"Full-day summit on building exceptional mobile products. Speakers from Duolingo, Spotify, and Calm.",                            location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126", event_date:fd(14,9,0),  max_attendees:200, industry_tags:["Consumer","EdTech"],          creator:{name:"Mei Yamamoto",     id:"d16" }, attendee_count:128},
+  { id:"e13", title:"Africa Tech Founder Circle",       description:"Monthly circle for African founders building pan-African or global companies. Peer support and investor intros.",                 location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                event_date:fd(5,17,0),  max_attendees:35,  industry_tags:["FinTech","E-commerce"],       creator:{name:"Aisha Diallo",     id:"d20" }, attendee_count:19 },
+  { id:"e14", title:"B2B SaaS Metrics Deep Dive",       description:"Workshop on the metrics that matter for B2B SaaS. NRR, CAC payback, magic number — with real benchmarks.",                      location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",         event_date:fd(6,15,0),  max_attendees:100, industry_tags:["SaaS"],                       creator:{name:"Sophie Laurent",   id:"d24" }, attendee_count:73 },
+  { id:"e15", title:"Hardware & IoT Builders Meetup",   description:"For founders building in the physical world. Demos, teardowns, and war stories from the supply chain trenches.",                 location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(15,11,0), max_attendees:40,  industry_tags:["DeepTech"],                   creator:{name:"Tom Blackwell",    id:"d11" }, attendee_count:26 },
+  { id:"e16", title:"MENA Startup Showcase",            description:"Showcase of the most exciting startups from the Middle East and North Africa. Gulf and London investors attending.",              location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                  event_date:fd(18,14,0), max_attendees:150, industry_tags:["FinTech","EdTech","Consumer"], creator:{name:"Zara Ahmed",       id:"d18" }, attendee_count:89 },
+  { id:"e17", title:"Privacy-First Product Talk",       description:"How to build products that respect user privacy without sacrificing growth. Case studies from Signal, Proton, and Brave.",       location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(3,19,0),  max_attendees:null,industry_tags:["SaaS","DeepTech"],            creator:{name:"Nina Volkov",      id:"d30" }, attendee_count:201},
+  { id:"e18", title:"Seed Funding Panel",               description:"5 seed investors break down what they look for. Bring your deck and get brutally honest feedback in small groups.",              location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",     event_date:fd(20,14,0), max_attendees:60,  industry_tags:["SaaS","FinTech","HealthTech"], creator:{name:"Oliver Grant",     id:"d19" }, attendee_count:47 },
+  { id:"e19", title:"Rust & Systems Programming Night", description:"Lightning talks on Rust in production, WebAssembly, and distributed systems. For engineers who love low-level.",                 location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",    event_date:fd(13,18,30),max_attendees:50,  industry_tags:["DeepTech","SaaS"],            creator:{name:"Nina Volkov",      id:"d30" }, attendee_count:34 },
+  { id:"e20", title:"Impact Investing Breakfast",       description:"Connecting impact-focused founders with patient capital. Focus on climate, health equity, and financial inclusion.",              location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",       event_date:fd(7,8,30),  max_attendees:30,  industry_tags:["Climate","HealthTech"],        creator:{name:"Amara Okonkwo",    id:"d7"  }, attendee_count:21 },
+  { id:"e21", title:"Design Systems Workshop",          description:"Hands-on workshop building a component library from scratch in Figma and React. Take home a production-ready design system.",    location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",      event_date:fd(9,10,0),  max_attendees:24,  industry_tags:["SaaS","Consumer"],            creator:{name:"Sofia Russo",      id:"d4"  }, attendee_count:18 },
+  { id:"e22", title:"LLM Application Builders Meetup",  description:"Monthly meetup for developers building on top of GPT, Claude, and Gemini. Show and tell, debugging sessions, best practices.",  location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",            event_date:fd(16,18,0), max_attendees:80,  industry_tags:["DeepTech","SaaS"],            creator:{name:"Lin Wei",          id:"d9"  }, attendee_count:62 },
+  { id:"e23", title:"Revenue Operations Summit",        description:"For RevOps leaders and founders wanting to build a world-class GTM machine. Tools, processes, and team structures.",              location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(21,9,0),  max_attendees:90,  industry_tags:["SaaS"],                       creator:{name:"Rachel Torres",    id:"d10" }, attendee_count:55 },
+  { id:"e24", title:"Nordic Founders Meetup",           description:"Gathering for Scandinavian founders and those building for Nordic markets. Saunas, great coffee, and genuine conversations.",    location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",           event_date:fd(25,17,0), max_attendees:55,  industry_tags:["Climate","SaaS"],             creator:{name:"Kai Andersen",     id:"d25" }, attendee_count:40 },
+  { id:"e25", title:"Consumer App Growth Workshop",     description:"Tactical workshop: push notifications, onboarding flows, virality loops, and retention strategies for consumer apps.",           location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                event_date:fd(4,11,0),  max_attendees:75,  industry_tags:["Consumer"],                   creator:{name:"Mei Yamamoto",     id:"d16" }, attendee_count:58 },
+  { id:"e26", title:"Pitch Perfect — Founder Bootcamp", description:"Two-day intensive bootcamp on nailing your investor pitch. Deck review, mock pitches, and coaching from ex-VCs.",               location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",     event_date:fd(28,9,0),  max_attendees:20,  industry_tags:["SaaS","FinTech","HealthTech"], creator:{name:"Oliver Grant",     id:"d19" }, attendee_count:15 },
+  { id:"e27", title:"Korea Tech Networking Night",      description:"For founders building in or for South Korea and the broader APAC market. Investors from SoftBank and Kakao Ventures.",          location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                  event_date:fd(11,18,30),max_attendees:100, industry_tags:["Consumer","DeepTech"],        creator:{name:"Hana Park",        id:"d28" }, attendee_count:76 },
+  { id:"e28", title:"HealthTech Regulatory Q&A",        description:"Expert panel on navigating FDA, CE Mark, and TGA approval for digital health products. Ask your burning compliance questions.",  location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                event_date:fd(17,14,0), max_attendees:60,  industry_tags:["HealthTech"],                 creator:{name:"Isla MacGregor",   id:"d14" }, attendee_count:43 },
+  { id:"e29", title:"Startup Visa & Global Expansion",  description:"How to set up your company for global growth. Tax structures, visa options, EOR providers, and banking across borders.",        location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",      event_date:fd(22,10,0), max_attendees:45,  industry_tags:["SaaS","FinTech"],             creator:{name:"Jake Morrison",    id:"d8"  }, attendee_count:30 },
+  { id:"e30", title:"Founder Stories: The Hard Parts",  description:"Founders share the moments they almost quit — and what kept them going. Raw, unfiltered, deeply human conversations.",          location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",  event_date:pd(3,19,0),  max_attendees:80,  industry_tags:["SaaS","FinTech","EdTech"],    creator:{name:"Marcus Webb",      id:"d3"  }, attendee_count:72 },
 ];
 
 // ════════════════════════════════════════════════════════
@@ -351,13 +351,157 @@ function ChatModal({ matchId, other, me, onClose }) {
 }
 
 // ════════════════════════════════════════════════════════
+// PROFILE DETAIL MODAL
+// ════════════════════════════════════════════════════════
+function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showToast, setProfile: setGlobalProfile }) {
+  const color = pal(p.id);
+  const isAccepted = matchState?.status==="accepted";
+  const isPending = matchState?.status==="pending";
+  const iSent = matchState?.from_user_id===user?.id;
+  const isDemo = p.id?.startsWith("d");
+
+  // Admin editing
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({name:p.name||"",role:p.role||"",bio:p.bio||"",location:p.location||"",skills:p.skills||[],linkedin_url:p.linkedin_url||"",website_url:p.website_url||"",whatsapp:p.whatsapp||""});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [uploadingAv, setUploadingAv] = useState(false);
+  const avRef = useRef();
+  const [localAvatar, setLocalAvatar] = useState(p.avatar_url);
+
+  async function saveAdminEdit() {
+    setSavingEdit(true);
+    try {
+      await supabase.from("profiles").update(editForm).eq("id",p.id);
+      showToast("Profile updated ✓");
+      setEditing(false);
+      Object.assign(p, editForm);
+    } catch(e){showToast(e.message,"error");}
+    setSavingEdit(false);
+  }
+
+  async function adminUploadAvatar(e) {
+    const file=e.target.files?.[0]; if(!file) return;
+    setUploadingAv(true);
+    try {
+      const url=await uploadImage(file,"avatars",p.id+"-admin");
+      await supabase.from("profiles").update({avatar_url:url}).eq("id",p.id);
+      setLocalAvatar(url); showToast("Photo updated ✓");
+    } catch(e){showToast(e.message,"error");}
+    setUploadingAv(false);
+  }
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/75 p-0 md:p-4"
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}}
+        className="w-full max-w-md overflow-y-auto rounded-t-3xl md:rounded-3xl"
+        style={{maxHeight:"90vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
+
+        {/* Banner */}
+        <div className="relative p-6 pb-4" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.25),rgba(167,139,250,0.1))"}}>
+          <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:text-white" style={{background:"rgba(0,0,0,0.3)"}}>✕</button>
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Av name={p.name} url={localAvatar} color={color} size="xl" ring/>
+              {isAdmin&&<button onClick={()=>avRef.current?.click()} className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full text-white text-xs flex items-center justify-center" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",border:"2px solid #0f1320"}}>{uploadingAv?"⏳":"📷"}</button>}
+              {isAdmin&&<input ref={avRef} type="file" accept="image/*" onChange={adminUploadAvatar} className="hidden"/>}
+            </div>
+            <div className="flex-1">
+              {editing
+                ? <input value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} className="text-white font-bold text-lg bg-transparent border-b border-white/30 focus:outline-none w-full mb-1"/>
+                : <div className="text-white font-bold text-lg">{p.name}</div>}
+              {editing
+                ? <input value={editForm.role} onChange={e=>setEditForm(f=>({...f,role:e.target.value}))} className="text-white/60 text-sm bg-transparent border-b border-white/20 focus:outline-none w-full"/>
+                : <div className="text-white/60 text-sm">{p.role}</div>}
+              {p.location&&!editing&&<div className="text-white/40 text-xs mt-0.5">📍 {p.location}</div>}
+              {editing&&<input value={editForm.location} onChange={e=>setEditForm(f=>({...f,location:e.target.value}))} placeholder="Location" className="text-white/60 text-xs bg-transparent border-b border-white/20 focus:outline-none w-full mt-1"/>}
+            </div>
+          </div>
+          {isAdmin&&(
+            <div className="mt-3">
+              {editing
+                ? <div className="flex gap-2"><PrimaryBtn onClick={saveAdminEdit} loading={savingEdit} small>Save</PrimaryBtn><OutlineBtn onClick={()=>setEditing(false)} small>Cancel</OutlineBtn></div>
+                : <OutlineBtn onClick={()=>setEditing(true)} small>✎ Edit Profile</OutlineBtn>}
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* Bio */}
+          {editing
+            ? <div className="space-y-1"><div className="text-white/35 text-xs uppercase tracking-wider">Bio</div><textarea value={editForm.bio} onChange={e=>setEditForm(f=>({...f,bio:e.target.value}))} rows={3} className="w-full rounded-xl px-3 py-2 text-sm text-white bg-white/5 border border-white/10 focus:outline-none resize-none"/></div>
+            : p.bio&&<p className="text-white/65 text-sm leading-relaxed">{p.bio}</p>}
+
+          {/* Project */}
+          {(p.project_name||p.project_pitch)&&(
+            <div className="p-3 rounded-2xl space-y-1" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+              <div className="text-white/40 text-xs">🚀 Project</div>
+              {p.project_name&&<div className="text-white font-semibold text-sm">{p.project_name}</div>}
+              {p.project_pitch&&<div className="text-white/55 text-xs leading-relaxed">{p.project_pitch}</div>}
+              {p.project_industry&&<SkillChip label={p.project_industry}/>}
+            </div>
+          )}
+
+          {/* Skills */}
+          {p.skills?.length>0&&(
+            <div>
+              <div className="text-white/35 text-xs uppercase tracking-wider mb-2">Skills</div>
+              <div className="flex flex-wrap gap-2">{p.skills.map(s=><SkillChip key={s} label={s}/>)}</div>
+            </div>
+          )}
+
+          {/* Social links (always visible) */}
+          {(p.linkedin_url||p.website_url||p.whatsapp)&&(
+            <div className="flex flex-wrap gap-2">
+              {p.linkedin_url&&<a href={p.linkedin_url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-semibold" style={{background:"rgba(10,102,194,0.2)",color:"#60a5fa",border:"1px solid rgba(10,102,194,0.3)"}}>🔗 LinkedIn</a>}
+              {p.website_url&&<a href={p.website_url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-semibold" style={{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.6)",border:`1px solid ${BORDER}`}}>🌐 Website</a>}
+              {p.whatsapp&&<a href={`https://wa.me/${p.whatsapp.replace(/[^0-9]/g,"")}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-semibold" style={{background:"rgba(37,211,102,0.15)",color:"#4ade80",border:"1px solid rgba(37,211,102,0.3)"}}>💬 WhatsApp</a>}
+            </div>
+          )}
+
+          {/* Contact (revealed only after match) */}
+          {isAccepted&&(
+            <div className="p-3 rounded-2xl" style={{background:"rgba(16,185,129,0.08)",border:"1px solid rgba(16,185,129,0.2)"}}>
+              <div className="text-emerald-400 text-xs font-semibold mb-2">✓ Connected — Contact Revealed</div>
+              <div className="space-y-1 text-xs text-white/60">
+                <div>📧 {p.email}</div>
+                {p.mobile&&<div>📱 {p.mobile}</div>}
+              </div>
+            </div>
+          )}
+
+          {/* Action */}
+          {!isDemo&&(
+            isAccepted ? (
+              <PrimaryBtn onClick={onClose} className="w-full">✓ Connected</PrimaryBtn>
+            ) : isPending&&iSent ? (
+              <PrimaryBtn disabled className="w-full">⏳ Request Sent</PrimaryBtn>
+            ) : isPending&&!iSent ? (
+              <PrimaryBtn disabled className="w-full">↙ Awaiting Your Response</PrimaryBtn>
+            ) : (
+              <PrimaryBtn onClick={()=>{onRequest(p);onClose();}} className="w-full">🤝 Send Partnership Request</PrimaryBtn>
+            )
+          )}
+          {isDemo&&<p className="text-white/30 text-xs text-center">Demo profile — real users appear when they sign up</p>}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
 // MATCH TAB
 // ════════════════════════════════════════════════════════
-function MatchTab({ user, isApproved, showToast, requireAuth }) {
+function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   const [search, setSearch] = useState("");
+  const [filterIndustry, setFilterIndustry] = useState("");
+  const [filterRole, setFilterRole] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [realProfiles, setRealProfiles] = useState([]);
   const [matchMap, setMatchMap] = useState({});
   const [chat, setChat] = useState(null);
+  const [selectedProfile, setSelectedProfile] = useState(null);
 
   useEffect(()=>{
     supabase.from("profiles").select("*").neq("id",user?.id||"x").eq("is_approved",true)
@@ -369,17 +513,18 @@ function MatchTab({ user, isApproved, showToast, requireAuth }) {
   },[user]);
 
   const pool = realProfiles.length>0 ? realProfiles : DEMO_PROFILES;
+
   const filtered = pool.filter(p=>{
-    if(!search) return true;
     const q=search.toLowerCase();
-    return (p.name||"").toLowerCase().includes(q)||(p.role||"").toLowerCase().includes(q)||(p.skills||[]).some(s=>s.toLowerCase().includes(q))||(p.location||"").toLowerCase().includes(q)||(p.bio||"").toLowerCase().includes(q);
+    const matchesSearch = !search || (p.name||"").toLowerCase().includes(q)||(p.role||"").toLowerCase().includes(q)||(p.skills||[]).some(s=>s.toLowerCase().includes(q))||(p.location||"").toLowerCase().includes(q)||(p.bio||"").toLowerCase().includes(q);
+    const matchesIndustry = !filterIndustry || p.project_industry===filterIndustry;
+    const matchesRole = !filterRole || (p.role||"").toLowerCase().includes(filterRole.toLowerCase());
+    return matchesSearch && matchesIndustry && matchesRole;
   });
 
-  // Top 4 for "core members" strip
   const coreMembers = pool.slice(0,4);
 
   async function handleRequest(p) {
-    // Opens login popup if not signed in, or onboarding if profile incomplete
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     if(p.id?.startsWith("d")){showToast("Demo profile — real users appear here once they sign up 😊");return;}
@@ -391,9 +536,15 @@ function MatchTab({ user, isApproved, showToast, requireAuth }) {
     } catch(e){showToast(e.message||"Error","error");}
   }
 
+  function openProfile(p) {
+    if(!user){ requireAuth && requireAuth(); return; }
+    setSelectedProfile(p);
+  }
+
+  const ROLE_FILTERS = ["CEO","CTO","CMO","CFO","COO","CPO","Founder","Engineer","Designer","Other"];
+
   return (
     <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-14}} transition={{duration:0.28}} className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold leading-tight" style={{background:"linear-gradient(135deg,#7cb9e8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
           Find Your Co-Founder
@@ -401,23 +552,74 @@ function MatchTab({ user, isApproved, showToast, requireAuth }) {
         <p className="text-white/45 text-sm mt-1">Browse profiles and send partnership requests</p>
       </div>
 
-      {/* Core Members */}
+      {/* Core Members — full name + clickable */}
       <div>
         <h3 className="text-white font-semibold text-sm mb-3">Core Members</h3>
-        <div className="flex gap-5">
+        <div className="flex gap-4 overflow-x-auto pb-1">
           {coreMembers.map(p=>(
-            <div key={p.id} className="flex flex-col items-center gap-1.5">
-              <Av name={p.name} url={p.avatar_url} color={pal(p.id)} size="xl" ring/>
-              <span className="text-white/70 text-xs font-medium">{p.name?.split(" ")[0]}</span>
-            </div>
+            <button key={p.id} onClick={()=>openProfile(p)} className="flex flex-col items-center gap-2 flex-shrink-0 group">
+              <div className="transition-transform group-hover:scale-105">
+                <Av name={p.name} url={p.avatar_url} color={pal(p.id)} size="xl" ring/>
+              </div>
+              <span className="text-white/70 text-xs font-medium text-center w-20 leading-tight">{p.name}</span>
+            </button>
           ))}
         </div>
       </div>
 
-      {/* Search */}
-      <SearchBar value={search} onChange={setSearch} placeholder="Search by name, role, skills, or location..."/>
+      {/* Search + filter bar */}
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <SearchBar value={search} onChange={setSearch} placeholder="Search by name, role, skills, location..."/>
+          </div>
+          <button onClick={()=>setShowFilters(!showFilters)}
+            className="w-12 h-12 rounded-2xl flex items-center justify-center text-lg flex-shrink-0 transition-all"
+            style={showFilters||filterIndustry||filterRole?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}:{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>
+            ⚙
+          </button>
+        </div>
 
-      {/* Profile Cards */}
+        <AnimatePresence>
+          {showFilters&&(
+            <motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}} style={{overflow:"hidden"}}>
+              <Card className="p-4 space-y-3">
+                <div>
+                  <div className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Filter by Industry</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button onClick={()=>setFilterIndustry("")} className="px-3 py-1 rounded-full text-xs font-medium transition-all" style={!filterIndustry?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>All</button>
+                    {INDUSTRIES.map(ind=>(
+                      <button key={ind} onClick={()=>setFilterIndustry(filterIndustry===ind?"":ind)} className="px-3 py-1 rounded-full text-xs font-medium transition-all" style={filterIndustry===ind?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>{ind}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Filter by Role</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button onClick={()=>setFilterRole("")} className="px-3 py-1 rounded-full text-xs font-medium transition-all" style={!filterRole?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>All</button>
+                    {ROLE_FILTERS.map(r=>(
+                      <button key={r} onClick={()=>setFilterRole(filterRole===r?"":r)} className="px-3 py-1 rounded-full text-xs font-medium transition-all" style={filterRole===r?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>{r}</button>
+                    ))}
+                  </div>
+                </div>
+                {(filterIndustry||filterRole)&&(
+                  <button onClick={()=>{setFilterIndustry("");setFilterRole("");}} className="text-white/40 text-xs hover:text-white/70 transition-colors">✕ Clear all filters</button>
+                )}
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {(filterIndustry||filterRole)&&(
+          <div className="flex gap-2 flex-wrap">
+            {filterIndustry&&<span className="px-3 py-1 rounded-full text-xs font-medium" style={{background:"rgba(124,111,224,0.2)",color:"#a78bfa"}}>🎓 {filterIndustry}</span>}
+            {filterRole&&<span className="px-3 py-1 rounded-full text-xs font-medium" style={{background:"rgba(124,111,224,0.2)",color:"#a78bfa"}}>👤 {filterRole}</span>}
+            <span className="text-white/40 text-xs self-center">{filtered.length} result{filtered.length!==1?"s":""}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Profile Cards — clickable */}
       <div className="space-y-4">
         {filtered.map((p,i)=>{
           const color=pal(p.id);
@@ -427,76 +629,38 @@ function MatchTab({ user, isApproved, showToast, requireAuth }) {
           const iSent=matchState?.from_user_id===user?.id;
           return (
             <motion.div key={p.id} initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:i*0.04}}>
-              <Card className="p-5">
-                {/* Header row */}
-                <div className="flex items-start gap-3 mb-4">
+              <Card className="p-5 cursor-pointer hover:border-white/20 transition-all" onClick={()=>openProfile(p)}>
+                <div className="flex items-start gap-3 mb-3">
                   <Av name={p.name} url={p.avatar_url} color={color} size="md" ring/>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="text-white font-bold text-base">{p.name}</div>
-                        <div className="text-white/45 text-xs mt-0.5">
-                          {p.project_name ? `Looking for: Co-founder for ${p.project_name}` : `Looking for: Co-founder`}
-                        </div>
-                        {p.location&&<div className="flex items-center gap-1 text-white/35 text-xs mt-1"><span>📍</span>{p.location}</div>}
-                      </div>
-                    </div>
+                    <div className="text-white font-bold text-base">{p.name}</div>
+                    <div className="text-white/50 text-sm">{p.role}</div>
+                    {p.location&&<div className="text-white/35 text-xs mt-0.5">📍 {p.location}</div>}
                   </div>
+                  {p.project_industry&&<SkillChip label={p.project_industry}/>}
                 </div>
 
-                {/* Role / Background */}
-                {p.role&&(
-                  <div className="mb-3">
-                    <div className="text-white/70 text-sm font-semibold">{p.role}</div>
-                    {p.project_industry&&(
-                      <div className="mt-1.5 px-3 py-1.5 rounded-xl inline-flex items-center gap-1.5 text-xs" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
-                        <span className="text-white/40">🎓 Background</span>
-                        <span className="text-white/70 font-medium">{p.project_industry}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Bio */}
                 {p.bio&&<p className="text-white/45 text-sm leading-relaxed mb-3 line-clamp-2">{p.bio}</p>}
+                {p.skills?.length>0&&<div className="flex flex-wrap gap-1.5 mb-4">{p.skills.slice(0,4).map(s=><SkillChip key={s} label={s}/>)}</div>}
 
-                {/* Skills */}
-                {p.skills?.length>0&&(
-                  <div className="mb-4">
-                    <div className="flex items-center gap-1.5 text-white/35 text-xs mb-2"><span>{"<>"}</span> Skills</div>
-                    <div className="flex flex-wrap gap-2">{p.skills.slice(0,4).map(s=><SkillChip key={s} label={s}/>)}</div>
-                  </div>
-                )}
+                {/* WhatsApp badge */}
+                {p.whatsapp&&<div className="mb-3"><span className="text-xs px-2.5 py-1 rounded-full" style={{background:"rgba(37,211,102,0.12)",color:"#4ade80",border:"1px solid rgba(37,211,102,0.25)"}}>💬 WhatsApp available</span></div>}
 
-                {/* Blurred contact / revealed */}
-                {isAccepted&&(
-                  <div className="mb-4 p-3 rounded-2xl" style={{background:"rgba(16,185,129,0.08)",border:"1px solid rgba(16,185,129,0.2)"}}>
-                    <div className="text-emerald-400 text-xs font-semibold mb-1">✓ Connected — Contact Revealed</div>
-                    <div className="text-white/55 text-xs space-y-0.5"><div>📧 {p.email}</div>{p.mobile&&<div>📱 {p.mobile}</div>}</div>
-                  </div>
-                )}
-
-                {/* Action */}
-                <PrimaryBtn onClick={()=>!matchState&&handleRequest(p)} className="w-full"
-                  disabled={!!matchState}>
-                  {isAccepted ? (
-                    <><span>✓</span> Connected</>
-                  ) : isPending&&iSent ? (
-                    <><span>⏳</span> Request Sent</>
-                  ) : isPending&&!iSent ? (
-                    <><span>↙</span> Awaiting Your Response</>
-                  ) : (
-                    <><span>🤝</span> Partnership Request</>
+                <div onClick={e=>e.stopPropagation()}>
+                  <PrimaryBtn onClick={()=>!matchState&&handleRequest(p)} className="w-full" disabled={!!matchState}>
+                    {isAccepted?<><span>✓</span> Connected</>
+                    :isPending&&iSent?<><span>⏳</span> Request Sent</>
+                    :isPending&&!iSent?<><span>↙</span> Awaiting Response</>
+                    :<><span>🤝</span> Partnership Request</>}
+                  </PrimaryBtn>
+                  {isAccepted&&(
+                    <button onClick={()=>setChat({matchId:matchState.id,other:p})}
+                      className="w-full mt-2 py-2.5 rounded-2xl text-sm font-semibold transition-all"
+                      style={{border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.6)"}}>
+                      💬 Open Chat
+                    </button>
                   )}
-                </PrimaryBtn>
-
-                {isAccepted&&(
-                  <button onClick={()=>setChat({matchId:matchState.id,other:p})}
-                    className="w-full mt-2 py-2.5 rounded-2xl text-sm font-semibold transition-all"
-                    style={{border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.6)"}}>
-                    💬 Open Chat
-                  </button>
-                )}
+                </div>
               </Card>
             </motion.div>
           );
@@ -504,14 +668,16 @@ function MatchTab({ user, isApproved, showToast, requireAuth }) {
       </div>
 
       <AnimatePresence>{chat&&<ChatModal matchId={chat.matchId} other={chat.other} me={user} onClose={()=>setChat(null)}/>}</AnimatePresence>
+      <AnimatePresence>{selectedProfile&&<ProfileModal p={selectedProfile} onClose={()=>setSelectedProfile(null)} onRequest={handleRequest} matchState={matchMap[selectedProfile.id]} user={user} isAdmin={isAdmin} showToast={showToast}/>}</AnimatePresence>
     </motion.div>
   );
 }
 
+
 // ════════════════════════════════════════════════════════
 // EVENTS TAB
 // ════════════════════════════════════════════════════════
-function EventsTab({ user, isApproved, showToast, requireAuth }) {
+function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   const [events, setEvents] = useState([]);
   const [attSet, setAttSet] = useState(new Set());
   const [attCounts, setAttCounts] = useState({});
@@ -520,8 +686,8 @@ function EventsTab({ user, isApproved, showToast, requireAuth }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedEvent, setSelectedEvent] = useState(null);
-  const [editingId, setEditingId] = useState(null);
+  const [filterState, setFilterState] = useState("");
+  const [filterDate, setFilterDate] = useState("");
   const [uploadingCover, setUploadingCover] = useState(false);
   const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
   const coverInputRef = useRef();
@@ -618,12 +784,26 @@ function EventsTab({ user, isApproved, showToast, requireAuth }) {
 
   const now=new Date();
   const filtered = events.filter(ev=>{
-    if(!search) return true;
     const q=search.toLowerCase();
-    return (ev.title||"").toLowerCase().includes(q)||(ev.description||"").toLowerCase().includes(q)||(ev.location||"").toLowerCase().includes(q);
+    const matchesSearch = !search || (ev.title||"").toLowerCase().includes(q)||(ev.description||"").toLowerCase().includes(q)||(ev.location||"").toLowerCase().includes(q);
+    const matchesState = !filterState || (ev.location||"").toUpperCase().includes(filterState);
+    let matchesDate = true;
+    if(filterDate){
+      const ed = new Date(ev.event_date);
+      const today = new Date(); today.setHours(0,0,0,0);
+      const todayEnd = new Date(today); todayEnd.setHours(23,59,59,999);
+      const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate()+7);
+      const monthEnd = new Date(today); monthEnd.setMonth(monthEnd.getMonth()+1);
+      if(filterDate==="today") matchesDate = ed>=today && ed<=todayEnd;
+      else if(filterDate==="week") matchesDate = ed>=today && ed<=weekEnd;
+      else if(filterDate==="month") matchesDate = ed>=today && ed<=monthEnd;
+      else if(filterDate==="future") matchesDate = ed>=today;
+      else if(filterDate==="past") matchesDate = ed<today;
+    }
+    return matchesSearch && matchesState && matchesDate;
   });
 
-  const ownsEvent = (ev) => user && ev.creator_id===user.id;
+  const ownsEvent = (ev) => user && (ev.creator_id===user.id || isAdmin);
   const myEvents = filtered.filter(ev=>ownsEvent(ev));
   const otherEvents = filtered.filter(ev=>!ownsEvent(ev));
   const cntOf = (ev) => ev.attendee_count || attCounts[ev.id] || 0;
@@ -701,17 +881,28 @@ function EventsTab({ user, isApproved, showToast, requireAuth }) {
 
       {/* Search + filters */}
       <Card className="p-4 space-y-3">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search events by title, description, or loc..."/>
+        <SearchBar value={search} onChange={setSearch} placeholder="Search events by title, description, location..."/>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm text-white/50 flex-1 justify-center"
-            style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
-            <span>📍</span> All Locations <span className="text-white/30">∨</span>
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm text-white/50 flex-1 justify-center"
-            style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
-            <span>📅</span> All Dates <span className="text-white/30">∨</span>
-          </button>
+          <select value={filterState} onChange={e=>setFilterState(e.target.value)}
+            className="flex-1 rounded-2xl px-3 py-2.5 text-sm focus:outline-none"
+            style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,color:filterState?"white":"rgba(255,255,255,0.4)",colorScheme:"dark"}}>
+            <option value="">📍 All Locations</option>
+            {["VIC","NSW","QLD","WA","SA","ACT","TAS","NT"].map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={filterDate} onChange={e=>setFilterDate(e.target.value)}
+            className="flex-1 rounded-2xl px-3 py-2.5 text-sm focus:outline-none"
+            style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,color:filterDate?"white":"rgba(255,255,255,0.4)",colorScheme:"dark"}}>
+            <option value="">📅 All Dates</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+            <option value="future">Upcoming</option>
+            <option value="past">Past Events</option>
+          </select>
         </div>
+        {(filterState||filterDate||search)&&(
+          <button onClick={()=>{setSearch("");setFilterState("");setFilterDate("");}} className="text-white/40 text-xs hover:text-white/70 transition-colors">✕ Clear filters</button>
+        )}
       </Card>
 
       {/* Events List */}
@@ -1055,7 +1246,7 @@ function ChatTab({ user, showToast }) {
 // PROFILE TAB
 // ════════════════════════════════════════════════════════
 function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
-  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:""});
+  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:""});
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState("identity");
@@ -1063,7 +1254,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
   const avatarInputRef = useRef();
 
   useEffect(()=>{
-    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||""});
+    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||""});
   },[profile]);
 
   const pitchScore=(()=>{let s=0;if(form.project_name?.length>3)s+=25;if(form.project_pitch?.length>20)s+=30;if(form.project_pitch?.length>80)s+=20;if(form.project_industry)s+=25;return Math.min(s,100);})();
@@ -1084,7 +1275,12 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
   async function save() {
     setSaving(true);
     try {
-      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,updated_at:new Date().toISOString()}).eq("id",user.id);
+      // Validate WhatsApp — AU only (+61)
+      if(form.whatsapp && !form.whatsapp.replace(/\s/g,"").match(/^\+61[0-9]{8,9}$/)){
+        showToast("WhatsApp must be an Australian number starting with +61","error");
+        setSaving(false); return;
+      }
+      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,updated_at:new Date().toISOString()}).eq("id",user.id);
       if(error) throw error;
       setProfile(p=>({...p,...form})); showToast("Profile saved ✓");
     } catch(e){showToast(e.message,"error");}
@@ -1214,14 +1410,33 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         {section==="contact"&&(
           <motion.div key="ct" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
             <Card className="p-5 space-y-4">
-              <div className="flex items-center justify-between"><span className="text-white font-bold">Private Contact</span><span className="text-white/30 text-xs px-2.5 py-1 rounded-full" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>🔒 Mutual match only</span></div>
+              <div className="flex items-center justify-between"><span className="text-white font-bold">Contact & Social</span><span className="text-white/30 text-xs px-2.5 py-1 rounded-full" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>🔒 Private details: mutual match only</span></div>
               <div className="space-y-1.5">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Email</label>
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Email (from Google)</label>
                 <input value={user?.email||""} disabled className="w-full rounded-2xl px-4 py-3 text-sm opacity-50 cursor-not-allowed" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.5)"}}/>
               </div>
               <div className="space-y-1.5">
                 <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Mobile</label>
-                <input value={form.mobile} onChange={e=>setForm(f=>({...f,mobile:e.target.value}))} placeholder="+1 415 000 0000"
+                <input value={form.mobile} onChange={e=>setForm(f=>({...f,mobile:e.target.value}))} placeholder="+61 4XX XXX XXX"
+                  className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">WhatsApp (AU only — +61)</label>
+                <input value={form.whatsapp} onChange={e=>setForm(f=>({...f,whatsapp:e.target.value}))} placeholder="+61 4XX XXX XXX"
+                  className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+                <p className="text-white/25 text-xs">Must start with +61. WhatsApp icon will appear on your profile when filled in.</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">LinkedIn URL</label>
+                <input value={form.linkedin_url} onChange={e=>setForm(f=>({...f,linkedin_url:e.target.value}))} placeholder="https://linkedin.com/in/yourname"
+                  className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Business Website</label>
+                <input value={form.website_url} onChange={e=>setForm(f=>({...f,website_url:e.target.value}))} placeholder="https://yourbusiness.com.au"
                   className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
                   style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
               </div>
@@ -1231,6 +1446,25 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
       </AnimatePresence>
 
       <PrimaryBtn onClick={save} loading={saving} className="w-full">Save Profile</PrimaryBtn>
+
+      {/* Social links display */}
+      {(profile?.linkedin_url||profile?.website_url||profile?.whatsapp)&&(
+        <Card className="p-4">
+          <div className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">Your Links</div>
+          <div className="flex flex-wrap gap-2">
+            {profile?.linkedin_url&&<a href={profile.linkedin_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2 rounded-2xl text-xs font-semibold transition-all" style={{background:"rgba(10,102,194,0.2)",color:"#60a5fa",border:"1px solid rgba(10,102,194,0.3)"}}>🔗 LinkedIn</a>}
+            {profile?.website_url&&<a href={profile.website_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2 rounded-2xl text-xs font-semibold transition-all" style={{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.6)",border:`1px solid ${BORDER}`}}>🌐 Website</a>}
+            {profile?.whatsapp&&<a href={`https://wa.me/${profile.whatsapp.replace(/[^0-9]/g,"")}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2 rounded-2xl text-xs font-semibold transition-all" style={{background:"rgba(37,211,102,0.15)",color:"#4ade80",border:"1px solid rgba(37,211,102,0.3)"}}>💬 WhatsApp</a>}
+          </div>
+        </Card>
+      )}
+
+      {/* Logout */}
+      <button onClick={()=>supabase.auth.signOut()}
+        className="w-full py-3.5 rounded-2xl text-sm font-semibold transition-all"
+        style={{border:"1px solid rgba(239,68,68,0.3)",color:"rgba(239,68,68,0.7)",background:"rgba(239,68,68,0.06)"}}>
+        Sign Out
+      </button>
     </motion.div>
   );
 }
@@ -1566,8 +1800,8 @@ export default function App() {
                 <GoogleIcon/> Sign In to Continue
               </PrimaryBtn>
             </motion.div>
-          ):tab==="matching"?<MatchTab key="m" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth}/>
-          :tab==="events"?<EventsTab key="e" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth}/>
+          ):tab==="matching"?<MatchTab key="m" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
+          :tab==="events"?<EventsTab key="e" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
           :tab==="chat"?<ChatTab key="c" user={user} showToast={showToast}/>
           :tab==="profile"?<ProfileTab key="p" user={user} profile={profile} setProfile={setProfile} showToast={showToast} isApproved={isApproved}/>
           :tab==="manage"&&isAdmin?<ManageTab key="a" showToast={showToast}/>
