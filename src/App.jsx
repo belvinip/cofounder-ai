@@ -360,7 +360,6 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
   const iSent = matchState?.from_user_id===user?.id;
   const isDemo = p.id?.startsWith("d");
 
-  // Admin editing
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({name:p.name||"",role:p.role||"",bio:p.bio||"",location:p.location||"",skills:p.skills||[],linkedin_url:p.linkedin_url||"",website_url:p.website_url||"",whatsapp:p.whatsapp||""});
   const [savingEdit, setSavingEdit] = useState(false);
@@ -371,7 +370,8 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
   async function saveAdminEdit() {
     setSavingEdit(true);
     try {
-      await supabase.from("profiles").update(editForm).eq("id",p.id);
+      const {error}=await supabase.from("profiles").update(editForm).eq("id",p.id);
+      if(error) throw error;
       showToast("Profile updated ✓");
       setEditing(false);
       Object.assign(p, editForm);
@@ -384,59 +384,83 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
     setUploadingAv(true);
     try {
       const url=await uploadImage(file,"avatars",p.id+"-admin");
-      await supabase.from("profiles").update({avatar_url:url}).eq("id",p.id);
+      const {error}=await supabase.from("profiles").update({avatar_url:url}).eq("id",p.id);
+      if(error) throw error;
       setLocalAvatar(url); showToast("Photo updated ✓");
     } catch(e){showToast(e.message,"error");}
     setUploadingAv(false);
   }
 
+  async function toggleAdminStatus() {
+    const newVal=!p.is_admin;
+    const {error}=await supabase.from("profiles").update({is_admin:newVal,...(newVal?{is_approved:true}:{})}).eq("id",p.id);
+    if(error){showToast(error.message,"error");return;}
+    p.is_admin=newVal; if(newVal) p.is_approved=true;
+    showToast(newVal?"⭐ Admin granted — now a Core Member":"Admin removed");
+    onClose();
+  }
+
+  async function toggleApprovalStatus() {
+    const newVal=!p.is_approved;
+    const {error}=await supabase.from("profiles").update({is_approved:newVal}).eq("id",p.id);
+    if(error){showToast(error.message,"error");return;}
+    p.is_approved=newVal;
+    showToast(newVal?"✓ Approved":"Approval revoked");
+    onClose();
+  }
+
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/75 p-0 md:p-4"
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/80"
+      style={{padding:0}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}}
-        className="w-full max-w-md overflow-y-auto rounded-t-3xl md:rounded-3xl"
-        style={{maxHeight:"90vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
+      <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
+        className="w-full md:max-w-md flex flex-col rounded-t-3xl md:rounded-3xl"
+        style={{height:"92vh",maxHeight:"700px",background:"#0f1320",border:`1px solid ${BORDER}`,boxShadow:"0 -20px 60px rgba(0,0,0,0.6)"}}>
 
-        {/* Banner */}
-        <div className="relative p-6 pb-4" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.25),rgba(167,139,250,0.1))"}}>
-          <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:text-white" style={{background:"rgba(0,0,0,0.3)"}}>✕</button>
+        {/* Fixed header/banner */}
+        <div className="flex-shrink-0 relative p-5 pb-4 rounded-t-3xl" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.3),rgba(167,139,250,0.12))"}}>
+          {/* Drag handle */}
+          <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
+          <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:text-white transition-all" style={{background:"rgba(0,0,0,0.3)"}}>✕</button>
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <Av name={p.name} url={localAvatar} color={color} size="xl" ring/>
-              {isAdmin&&<button onClick={()=>avRef.current?.click()} className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full text-white text-xs flex items-center justify-center" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",border:"2px solid #0f1320"}}>{uploadingAv?"⏳":"📷"}</button>}
+            <div className="relative flex-shrink-0">
+              <Av name={editing?editForm.name:p.name} url={localAvatar} color={color} size="xl" ring/>
+              {isAdmin&&<button onClick={()=>avRef.current?.click()} className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full text-white text-xs flex items-center justify-center transition-all" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",border:"2px solid #0f1320"}}>{uploadingAv?"⏳":"📷"}</button>}
               {isAdmin&&<input ref={avRef} type="file" accept="image/*" onChange={adminUploadAvatar} className="hidden"/>}
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               {editing
                 ? <input value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} className="text-white font-bold text-lg bg-transparent border-b border-white/30 focus:outline-none w-full mb-1"/>
-                : <div className="text-white font-bold text-lg">{p.name}</div>}
+                : <div className="text-white font-bold text-lg leading-tight">{p.name}</div>}
               {editing
-                ? <input value={editForm.role} onChange={e=>setEditForm(f=>({...f,role:e.target.value}))} className="text-white/60 text-sm bg-transparent border-b border-white/20 focus:outline-none w-full"/>
-                : <div className="text-white/60 text-sm">{p.role}</div>}
-              {p.location&&!editing&&<div className="text-white/40 text-xs mt-0.5">📍 {p.location}</div>}
-              {editing&&<input value={editForm.location} onChange={e=>setEditForm(f=>({...f,location:e.target.value}))} placeholder="Location" className="text-white/60 text-xs bg-transparent border-b border-white/20 focus:outline-none w-full mt-1"/>}
+                ? <input value={editForm.role} onChange={e=>setEditForm(f=>({...f,role:e.target.value}))} className="text-white/60 text-sm bg-transparent border-b border-white/20 focus:outline-none w-full mt-0.5"/>
+                : <div className="text-white/60 text-sm mt-0.5">{p.role}</div>}
+              {!editing&&p.location&&<div className="text-white/40 text-xs mt-1">📍 {p.location}</div>}
+              {editing&&<input value={editForm.location} onChange={e=>setEditForm(f=>({...f,location:e.target.value}))} placeholder="Location" className="text-white/50 text-xs bg-transparent border-b border-white/20 focus:outline-none w-full mt-1"/>}
             </div>
           </div>
           {isAdmin&&(
-            <div className="mt-3">
+            <div className="mt-3 flex gap-2">
               {editing
-                ? <div className="flex gap-2"><PrimaryBtn onClick={saveAdminEdit} loading={savingEdit} small>Save</PrimaryBtn><OutlineBtn onClick={()=>setEditing(false)} small>Cancel</OutlineBtn></div>
+                ? <><PrimaryBtn onClick={saveAdminEdit} loading={savingEdit} small>Save Changes</PrimaryBtn><OutlineBtn onClick={()=>setEditing(false)} small>Cancel</OutlineBtn></>
                 : <OutlineBtn onClick={()=>setEditing(true)} small>✎ Edit Profile</OutlineBtn>}
             </div>
           )}
         </div>
 
-        <div className="p-6 pb-28 md:pb-6 space-y-4">
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
           {/* Bio */}
           {editing
-            ? <div className="space-y-1"><div className="text-white/35 text-xs uppercase tracking-wider">Bio</div><textarea value={editForm.bio} onChange={e=>setEditForm(f=>({...f,bio:e.target.value}))} rows={3} className="w-full rounded-xl px-3 py-2 text-sm text-white bg-white/5 border border-white/10 focus:outline-none resize-none"/></div>
+            ? <div className="space-y-1.5"><div className="text-white/35 text-xs uppercase tracking-wider font-semibold">Bio</div><textarea value={editForm.bio} onChange={e=>setEditForm(f=>({...f,bio:e.target.value}))} rows={3} className="w-full rounded-2xl px-3 py-2.5 text-sm text-white focus:outline-none resize-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/></div>
             : p.bio&&<p className="text-white/65 text-sm leading-relaxed">{p.bio}</p>}
 
           {/* Project */}
           {(p.project_name||p.project_pitch)&&(
-            <div className="p-3 rounded-2xl space-y-1" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
-              <div className="text-white/40 text-xs">🚀 Project</div>
+            <div className="p-3 rounded-2xl space-y-1.5" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+              <div className="text-white/40 text-xs font-semibold">🚀 Project</div>
               {p.project_name&&<div className="text-white font-semibold text-sm">{p.project_name}</div>}
               {p.project_pitch&&<div className="text-white/55 text-xs leading-relaxed">{p.project_pitch}</div>}
               {p.project_industry&&<SkillChip label={p.project_industry}/>}
@@ -444,14 +468,14 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
           )}
 
           {/* Skills */}
-          {p.skills?.length>0&&(
+          {(editing?editForm.skills:p.skills)?.length>0&&(
             <div>
-              <div className="text-white/35 text-xs uppercase tracking-wider mb-2">Skills</div>
-              <div className="flex flex-wrap gap-2">{p.skills.map(s=><SkillChip key={s} label={s}/>)}</div>
+              <div className="text-white/35 text-xs uppercase tracking-wider font-semibold mb-2">Skills</div>
+              <div className="flex flex-wrap gap-2">{(editing?editForm.skills:p.skills).map(s=><SkillChip key={s} label={s}/>)}</div>
             </div>
           )}
 
-          {/* Social links (always visible) */}
+          {/* Social links — always visible */}
           {(p.linkedin_url||p.website_url||p.whatsapp)&&(
             <div className="flex flex-wrap gap-2">
               {p.linkedin_url&&<a href={p.linkedin_url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-semibold" style={{background:"rgba(10,102,194,0.2)",color:"#60a5fa",border:"1px solid rgba(10,102,194,0.3)"}}>🔗 LinkedIn</a>}
@@ -460,67 +484,67 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
             </div>
           )}
 
-          {/* Contact (revealed only after match) */}
-          {isAccepted&&(
-            <div className="p-3 rounded-2xl" style={{background:"rgba(16,185,129,0.08)",border:"1px solid rgba(16,185,129,0.2)"}}>
-              <div className="text-emerald-400 text-xs font-semibold mb-2">✓ Connected — Contact Revealed</div>
-              <div className="space-y-1 text-xs text-white/60">
-                <div>📧 {p.email}</div>
-                {p.mobile&&<div>📱 {p.mobile}</div>}
-              </div>
-            </div>
-          )}
-
-          {/* Admin controls — make/remove admin */}
-          {isAdmin&&!isDemo&&(
-            <div className="pt-1">
-              <div className="text-white/30 text-xs font-semibold uppercase tracking-wider mb-2">Admin Controls</div>
-              <div className="flex gap-2">
-                <OutlineBtn onClick={async()=>{
-                  const newVal=!p.is_admin;
-                  const{error}=await supabase.from("profiles").update({is_admin:newVal,...(newVal?{is_approved:true}:{})}).eq("id",p.id);
-                  if(error){showToast(error.message,"error");return;}
-                  p.is_admin=newVal; if(newVal) p.is_approved=true;
-                  showToast(newVal?"⭐ Admin granted — now a Core Member":"Admin removed");
-                  onClose();
-                }} small className="flex-1">{p.is_admin?"Remove Admin":"⭐ Make Admin"}</OutlineBtn>
-                <OutlineBtn onClick={async()=>{
-                  const newVal=!p.is_approved;
-                  const{error}=await supabase.from("profiles").update({is_approved:newVal}).eq("id",p.id);
-                  if(error){showToast(error.message,"error");return;}
-                  p.is_approved=newVal;
-                  showToast(newVal?"✓ Approved":"Approval revoked");
-                  onClose();
-                }} small className="flex-1">{p.is_approved?"Revoke Access":"✓ Approve"}</OutlineBtn>
-              </div>
-            </div>
-          )}
-
-          {/* Action — require login if not signed in */}
-          {!user&&(
-            <PrimaryBtn onClick={()=>{onClose(); onLoginRequired&&onLoginRequired();}} className="w-full">
-              Sign in to Send Partnership Request
-            </PrimaryBtn>
-          )}
-          {user&&!isDemo&&(
-            isAccepted ? (
-              <PrimaryBtn onClick={onClose} className="w-full">✓ Connected</PrimaryBtn>
-            ) : isPending&&iSent ? (
-              <PrimaryBtn disabled className="w-full">⏳ Request Sent</PrimaryBtn>
-            ) : isPending&&!iSent ? (
-              <PrimaryBtn disabled className="w-full">↙ Awaiting Your Response</PrimaryBtn>
+          {/* Contact — BLURRED until matched */}
+          <div className="p-4 rounded-2xl space-y-2 relative overflow-hidden" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+            <div className="text-white/35 text-xs uppercase tracking-wider font-semibold mb-2">Contact Details</div>
+            {isAccepted ? (
+              <>
+                <div className="text-sm text-white/70">📧 {p.email}</div>
+                {p.mobile&&<div className="text-sm text-white/70">📱 {p.mobile}</div>}
+                {p.whatsapp&&<div className="text-sm text-white/70">💬 {p.whatsapp}</div>}
+                <div className="text-emerald-400 text-xs mt-1">✓ Connected — contact revealed</div>
+              </>
             ) : (
-              <PrimaryBtn onClick={()=>{onRequest(p);onClose();}} className="w-full">🤝 Send Partnership Request</PrimaryBtn>
-            )
+              <>
+                <div className="select-none" style={{filter:"blur(5px)",color:"rgba(255,255,255,0.5)",fontSize:"14px"}}>📧 user@example.com</div>
+                <div className="select-none" style={{filter:"blur(5px)",color:"rgba(255,255,255,0.5)",fontSize:"14px"}}>📱 +61 4XX XXX XXX</div>
+                <div className="absolute inset-0 flex items-center justify-center rounded-2xl" style={{background:"rgba(15,19,32,0.6)"}}>
+                  <span className="text-white/50 text-xs font-semibold px-3 py-1.5 rounded-full" style={{background:"rgba(255,255,255,0.08)",border:`1px solid ${BORDER}`}}>🔒 Connect to reveal</span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Admin controls */}
+          {isAdmin&&!isDemo&&(
+            <div className="p-3 rounded-2xl space-y-2" style={{background:"rgba(124,111,224,0.08)",border:"1px solid rgba(124,111,224,0.2)"}}>
+              <div className="text-purple-400 text-xs font-semibold uppercase tracking-wider">⭐ Admin Controls</div>
+              <div className="flex gap-2">
+                <OutlineBtn onClick={toggleAdminStatus} small className="flex-1">{p.is_admin?"Remove Admin":"⭐ Make Admin"}</OutlineBtn>
+                <OutlineBtn onClick={toggleApprovalStatus} small className="flex-1">{p.is_approved?"Revoke Access":"✓ Approve"}</OutlineBtn>
+              </div>
+            </div>
           )}
-          {isDemo&&<p className="text-white/30 text-xs text-center">Demo profile — real users appear when they sign up</p>}
+
+          {/* CTA */}
+          {!user ? (
+            <PrimaryBtn onClick={()=>{onClose();onLoginRequired&&onLoginRequired();}} className="w-full">Sign in to Send Partnership Request</PrimaryBtn>
+          ) : isDemo ? (
+            <p className="text-white/30 text-xs text-center py-2">Demo profile — real users appear when they sign up</p>
+          ) : isAccepted ? (
+            <PrimaryBtn onClick={onClose} className="w-full">✓ Already Connected</PrimaryBtn>
+          ) : isPending&&iSent ? (
+            <div className="text-center py-2 text-white/40 text-sm">⏳ Partnership request sent — waiting for response</div>
+          ) : isPending&&!iSent ? (
+            <div className="space-y-2">
+              <div className="text-center text-white/50 text-sm">↙ This person wants to connect with you</div>
+              <div className="flex gap-2">
+                <PrimaryBtn onClick={()=>{onRequest&&onRequest(p,"accepted");onClose();}} className="flex-1">✓ Accept</PrimaryBtn>
+                <OutlineBtn onClick={()=>{onRequest&&onRequest(p,"declined");onClose();}} className="flex-1">✕ Decline</OutlineBtn>
+              </div>
+            </div>
+          ) : (
+            <PrimaryBtn onClick={()=>{onRequest(p);onClose();}} className="w-full">🤝 Send Partnership Request</PrimaryBtn>
+          )}
+
+          {/* Safe bottom padding */}
+          <div className="h-4"/>
         </div>
       </motion.div>
     </motion.div>
   );
 }
 
-// ════════════════════════════════════════════════════════
 // MATCH TAB
 // ════════════════════════════════════════════════════════
 function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
@@ -553,21 +577,20 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   }
 
   useEffect(()=>{
-    // Load ALL approved profiles (including self, so admins show in Core Members)
+    // Load ALL approved profiles (needed so admins appear in Core Members)
     supabase.from("profiles").select("*").eq("is_approved",true)
       .then(({data,error})=>{ if(!error&&data?.length) setRealProfiles(data); }).catch(()=>{});
     loadRequests();
   },[user]);
 
-  // Don't show the current user in the browse list (but they can still appear in Core Members)
   const myId = user?.id;
 
-  // Merge real users + demo profiles so the list always shows everyone
-  const pool = [...realProfiles, ...DEMO_PROFILES];
+  // Core Members = ONLY real admin users from the database. Never demo profiles.
+  const coreMembers = realProfiles.filter(p=>p.is_admin);
 
-  // Core Members = all admin users (real admins). Falls back to a few demos only if no real admins yet.
-  const adminMembers = realProfiles.filter(p=>p.is_admin);
-  const coreMembers = adminMembers.length>0 ? adminMembers : DEMO_PROFILES.slice(0,4);
+  // Browse list: real approved non-admin non-self users. If no real users yet, show demos.
+  const realBrowse = realProfiles.filter(p=>p.id!==myId);
+  const pool = realBrowse.length>0 ? realBrowse : DEMO_PROFILES;
 
   const filtered = pool.filter(p=>{
     if(p.id===myId) return false; // don't show yourself in the browse list
