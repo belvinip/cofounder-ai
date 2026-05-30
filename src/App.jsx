@@ -353,7 +353,7 @@ function ChatModal({ matchId, other, me, onClose }) {
 // ════════════════════════════════════════════════════════
 // PROFILE DETAIL MODAL
 // ════════════════════════════════════════════════════════
-function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showToast, setProfile: setGlobalProfile }) {
+function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showToast, onLoginRequired }) {
   const color = pal(p.id);
   const isAccepted = matchState?.status==="accepted";
   const isPending = matchState?.status==="pending";
@@ -471,8 +471,38 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
             </div>
           )}
 
-          {/* Action */}
-          {!isDemo&&(
+          {/* Admin controls — make/remove admin */}
+          {isAdmin&&!isDemo&&(
+            <div className="pt-1">
+              <div className="text-white/30 text-xs font-semibold uppercase tracking-wider mb-2">Admin Controls</div>
+              <div className="flex gap-2">
+                <OutlineBtn onClick={async()=>{
+                  const newVal=!p.is_admin;
+                  const{error}=await supabase.from("profiles").update({is_admin:newVal,...(newVal?{is_approved:true}:{})}).eq("id",p.id);
+                  if(error){showToast(error.message,"error");return;}
+                  p.is_admin=newVal; if(newVal) p.is_approved=true;
+                  showToast(newVal?"⭐ Admin granted — now a Core Member":"Admin removed");
+                  onClose();
+                }} small className="flex-1">{p.is_admin?"Remove Admin":"⭐ Make Admin"}</OutlineBtn>
+                <OutlineBtn onClick={async()=>{
+                  const newVal=!p.is_approved;
+                  const{error}=await supabase.from("profiles").update({is_approved:newVal}).eq("id",p.id);
+                  if(error){showToast(error.message,"error");return;}
+                  p.is_approved=newVal;
+                  showToast(newVal?"✓ Approved":"Approval revoked");
+                  onClose();
+                }} small className="flex-1">{p.is_approved?"Revoke Access":"✓ Approve"}</OutlineBtn>
+              </div>
+            </div>
+          )}
+
+          {/* Action — require login if not signed in */}
+          {!user&&(
+            <PrimaryBtn onClick={()=>{onClose(); onLoginRequired&&onLoginRequired();}} className="w-full">
+              Sign in to Send Partnership Request
+            </PrimaryBtn>
+          )}
+          {user&&!isDemo&&(
             isAccepted ? (
               <PrimaryBtn onClick={onClose} className="w-full">✓ Connected</PrimaryBtn>
             ) : isPending&&iSent ? (
@@ -514,6 +544,10 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
 
   const pool = realProfiles.length>0 ? realProfiles : DEMO_PROFILES;
 
+  // Core Members = only admin users (real admins or demo fallback)
+  const adminMembers = realProfiles.filter(p=>p.is_admin);
+  const coreMembers = adminMembers.length>0 ? adminMembers : DEMO_PROFILES.slice(0,4);
+
   const filtered = pool.filter(p=>{
     const q=search.toLowerCase();
     const matchesSearch = !search || (p.name||"").toLowerCase().includes(q)||(p.role||"").toLowerCase().includes(q)||(p.skills||[]).some(s=>s.toLowerCase().includes(q))||(p.location||"").toLowerCase().includes(q)||(p.bio||"").toLowerCase().includes(q);
@@ -521,8 +555,6 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
     const matchesRole = !filterRole || (p.role||"").toLowerCase().includes(filterRole.toLowerCase());
     return matchesSearch && matchesIndustry && matchesRole;
   });
-
-  const coreMembers = pool.slice(0,4);
 
   async function handleRequest(p) {
     if(requireAuth && !requireAuth()) return;
@@ -537,7 +569,6 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   }
 
   function openProfile(p) {
-    if(!user){ requireAuth && requireAuth(); return; }
     setSelectedProfile(p);
   }
 
@@ -668,7 +699,7 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
       </div>
 
       <AnimatePresence>{chat&&<ChatModal matchId={chat.matchId} other={chat.other} me={user} onClose={()=>setChat(null)}/>}</AnimatePresence>
-      <AnimatePresence>{selectedProfile&&<ProfileModal p={selectedProfile} onClose={()=>setSelectedProfile(null)} onRequest={handleRequest} matchState={matchMap[selectedProfile.id]} user={user} isAdmin={isAdmin} showToast={showToast}/>}</AnimatePresence>
+      <AnimatePresence>{selectedProfile&&<ProfileModal p={selectedProfile} onClose={()=>setSelectedProfile(null)} onRequest={handleRequest} matchState={matchMap[selectedProfile.id]} user={user} isAdmin={isAdmin} showToast={showToast} onLoginRequired={()=>{setSelectedProfile(null);requireAuth&&requireAuth();}}/>}</AnimatePresence>
     </motion.div>
   );
 }
@@ -1476,10 +1507,21 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
 // ════════════════════════════════════════════════════════
 function ManageTab({ showToast }) {
   const [users,setUsers]=useState([]); const [loading,setLoading]=useState(true); const [filter,setFilter]=useState("all");
-  async function load(){ const{data}=await supabase.from("profiles").select("*").order("created_at",{ascending:false}); setUsers(data||[]); setLoading(false); }
+  async function load(){ const{data,error}=await supabase.from("profiles").select("*").order("created_at",{ascending:false}); if(!error) setUsers(data||[]); setLoading(false); }
   useEffect(()=>{ load(); },[]);
-  async function toggleApprove(id,cur){ await supabase.from("profiles").update({is_approved:!cur}).eq("id",id); setUsers(u=>u.map(x=>x.id===id?{...x,is_approved:!cur}:x)); showToast(!cur?"Approved ✓":"Revoked"); }
-  async function toggleAdmin(id,cur){ await supabase.from("profiles").update({is_admin:!cur}).eq("id",id); setUsers(u=>u.map(x=>x.id===id?{...x,is_admin:!cur}:x)); showToast(!cur?"Admin granted":"Admin revoked"); }
+
+  async function toggleApprove(id,cur){
+    const {error}=await supabase.from("profiles").update({is_approved:!cur}).eq("id",id);
+    if(error){ showToast("DB error: "+error.message+" — run the admin RLS fix SQL","error"); return; }
+    setUsers(u=>u.map(x=>x.id===id?{...x,is_approved:!cur}:x));
+    showToast(!cur?"✓ Approved — user can now access the platform":"Approval revoked");
+  }
+  async function toggleAdmin(id,cur){
+    const {error}=await supabase.from("profiles").update({is_admin:!cur}).eq("id",id);
+    if(error){ showToast("DB error: "+error.message,"error"); return; }
+    setUsers(u=>u.map(x=>x.id===id?{...x,is_admin:!cur}:x));
+    showToast(!cur?"⭐ Admin granted — user is now a Core Member":"Admin role removed");
+  }
   const filtered=filter==="pending"?users.filter(u=>!u.is_approved):filter==="approved"?users.filter(u=>u.is_approved):users;
   return (
     <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-14}} className="space-y-5">
@@ -1494,21 +1536,30 @@ function ManageTab({ showToast }) {
               <Av name={u.name} url={u.avatar_url} color={c} size="sm" ring/>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
-                  <div><div className="text-white font-bold text-sm truncate">{u.name||"Unnamed"}</div><div className="text-white/35 text-xs truncate">{u.email}</div></div>
+                  <div>
+                    <div className="text-white font-bold text-sm truncate">{u.name||"Unnamed"}</div>
+                    <div className="text-white/35 text-xs truncate">{u.email}</div>
+                    {u.role&&<div className="text-white/30 text-xs">{u.role}</div>}
+                  </div>
                   <div className="flex gap-1.5 flex-shrink-0">
-                    {u.is_admin&&<span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{background:"rgba(124,111,224,0.2)",color:"#a78bfa"}}>Admin</span>}
+                    {u.is_admin&&<span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{background:"rgba(124,111,224,0.2)",color:"#a78bfa"}}>⭐ Admin</span>}
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={u.is_approved?{background:"rgba(16,185,129,0.15)",color:"#34d399"}:{background:"rgba(245,158,11,0.15)",color:"#fbbf24"}}>{u.is_approved?"Active":"Pending"}</span>
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
                   <PrimaryBtn onClick={()=>toggleApprove(u.id,u.is_approved)} small className="flex-1">{u.is_approved?"Revoke":"✓ Approve"}</PrimaryBtn>
-                  <OutlineBtn onClick={()=>toggleAdmin(u.id,u.is_admin)} small className="flex-1">{u.is_admin?"Remove Admin":"Make Admin"}</OutlineBtn>
+                  <OutlineBtn onClick={()=>toggleAdmin(u.id,u.is_admin)} small className="flex-1">{u.is_admin?"Remove Admin":"⭐ Make Admin"}</OutlineBtn>
                 </div>
               </div>
             </div>
           </Card>
         </motion.div>
       );})}</div>
+
+      {/* SQL fix reminder */}
+      <Card className="p-4">
+        <div className="text-white/40 text-xs">If approvals aren't saving, run the admin RLS fix SQL in Supabase (see instructions).</div>
+      </Card>
     </motion.div>
   );
 }
