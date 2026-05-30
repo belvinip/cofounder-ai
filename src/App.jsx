@@ -688,6 +688,8 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   const [search, setSearch] = useState("");
   const [filterState, setFilterState] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
   const coverInputRef = useRef();
