@@ -171,9 +171,9 @@ function OutlineBtn({ children, onClick, className="", small=false }) {
   );
 }
 
-function Card({ children, className="" }) {
+function Card({ children, className="", onClick }) {
   return (
-    <div className={`rounded-3xl ${className}`} style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
+    <div onClick={onClick} className={`rounded-3xl ${className}`} style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
       {children}
     </div>
   );
@@ -427,7 +427,7 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
           )}
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 pb-28 md:pb-6 space-y-4">
           {/* Bio */}
           {editing
             ? <div className="space-y-1"><div className="text-white/35 text-xs uppercase tracking-wider">Bio</div><textarea value={editForm.bio} onChange={e=>setEditForm(f=>({...f,bio:e.target.value}))} rows={3} className="w-full rounded-xl px-3 py-2 text-sm text-white bg-white/5 border border-white/10 focus:outline-none resize-none"/></div>
@@ -532,23 +532,45 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   const [matchMap, setMatchMap] = useState({});
   const [chat, setChat] = useState(null);
   const [selectedProfile, setSelectedProfile] = useState(null);
+  const [incomingReqs, setIncomingReqs] = useState([]);
+
+  async function loadRequests() {
+    if(!user) return;
+    const {data} = await supabase.from("match_requests").select("*").or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`);
+    const m={}; (data||[]).forEach(r=>{ const o=r.from_user_id===user.id?r.to_user_id:r.from_user_id; m[o]=r; }); setMatchMap(m);
+    const incoming = (data||[]).filter(r=>r.to_user_id===user.id && r.status==="pending");
+    if(incoming.length){
+      const {data:profs} = await supabase.from("profiles").select("*").in("id", incoming.map(r=>r.from_user_id));
+      setIncomingReqs(incoming.map(r=>({...r, sender:(profs||[]).find(p=>p.id===r.from_user_id)})));
+    } else setIncomingReqs([]);
+  }
+
+  async function respondToRequest(reqId, status) {
+    const {error}=await supabase.from("match_requests").update({status}).eq("id",reqId);
+    if(error){showToast(error.message,"error");return;}
+    showToast(status==="accepted"?"Match accepted! You can now chat ✓":"Request declined");
+    loadRequests();
+  }
 
   useEffect(()=>{
-    supabase.from("profiles").select("*").neq("id",user?.id||"x").eq("is_approved",true)
+    // Load ALL approved profiles (including self, so admins show in Core Members)
+    supabase.from("profiles").select("*").eq("is_approved",true)
       .then(({data,error})=>{ if(!error&&data?.length) setRealProfiles(data); }).catch(()=>{});
-    if(user){
-      supabase.from("match_requests").select("*").or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
-        .then(({data})=>{ const m={}; (data||[]).forEach(r=>{ const o=r.from_user_id===user.id?r.to_user_id:r.from_user_id; m[o]=r; }); setMatchMap(m); }).catch(()=>{});
-    }
+    loadRequests();
   },[user]);
 
-  const pool = realProfiles.length>0 ? realProfiles : DEMO_PROFILES;
+  // Don't show the current user in the browse list (but they can still appear in Core Members)
+  const myId = user?.id;
 
-  // Core Members = only admin users (real admins or demo fallback)
+  // Merge real users + demo profiles so the list always shows everyone
+  const pool = [...realProfiles, ...DEMO_PROFILES];
+
+  // Core Members = all admin users (real admins). Falls back to a few demos only if no real admins yet.
   const adminMembers = realProfiles.filter(p=>p.is_admin);
   const coreMembers = adminMembers.length>0 ? adminMembers : DEMO_PROFILES.slice(0,4);
 
   const filtered = pool.filter(p=>{
+    if(p.id===myId) return false; // don't show yourself in the browse list
     const q=search.toLowerCase();
     const matchesSearch = !search || (p.name||"").toLowerCase().includes(q)||(p.role||"").toLowerCase().includes(q)||(p.skills||[]).some(s=>s.toLowerCase().includes(q))||(p.location||"").toLowerCase().includes(q)||(p.bio||"").toLowerCase().includes(q);
     const matchesIndustry = !filterIndustry || p.project_industry===filterIndustry;
@@ -565,6 +587,7 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
       if(error) throw error;
       setMatchMap(m=>({...m,[p.id]:data}));
       showToast(`Partnership request sent to ${p.name} ✓`);
+      loadRequests();
     } catch(e){showToast(e.message||"Error","error");}
   }
 
@@ -649,6 +672,38 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
           </div>
         )}
       </div>
+
+      {/* Incoming Partnership Requests */}
+      {incomingReqs.length>0&&(
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-amber-400">🔔</span>
+            <span className="text-white font-bold text-base">Partnership Requests</span>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold" style={{background:"rgba(245,158,11,0.2)",color:"#fbbf24"}}>{incomingReqs.length}</span>
+          </div>
+          <div className="space-y-3">
+            {incomingReqs.map(req=>{
+              const s=req.sender; if(!s) return null;
+              return (
+                <Card key={req.id} className="p-4">
+                  <div className="flex items-start gap-3">
+                    <button onClick={()=>openProfile(s)}><Av name={s.name} url={s.avatar_url} color={pal(s.id)} size="sm" ring/></button>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white font-bold text-sm">{s.name}</div>
+                      <div className="text-white/40 text-xs">{s.role}{s.location?` · ${s.location}`:""}</div>
+                      <div className="text-white/30 text-xs mt-0.5">wants to partner with you</div>
+                      <div className="flex gap-2 mt-3">
+                        <PrimaryBtn onClick={()=>respondToRequest(req.id,"accepted")} small className="flex-1">✓ Accept</PrimaryBtn>
+                        <OutlineBtn onClick={()=>respondToRequest(req.id,"declined")} small className="flex-1">✕ Decline</OutlineBtn>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Profile Cards — clickable */}
       <div className="space-y-4">
