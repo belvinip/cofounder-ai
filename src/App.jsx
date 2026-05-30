@@ -1722,7 +1722,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
 // ════════════════════════════════════════════════════════
 // MANAGE TAB (Admin only)
 // ════════════════════════════════════════════════════════
-function ManageTab({ showToast }) {
+function ManageTab({ showToast, onViewAs }) {
   const [users,setUsers]=useState([]); const [loading,setLoading]=useState(true); const [filter,setFilter]=useState("all");
   async function load(){ const{data,error}=await supabase.from("profiles").select("*").order("created_at",{ascending:false}); if(!error) setUsers(data||[]); setLoading(false); }
   useEffect(()=>{ load(); },[]);
@@ -1767,6 +1767,11 @@ function ManageTab({ showToast }) {
                   <PrimaryBtn onClick={()=>toggleApprove(u.id,u.is_approved)} small className="flex-1">{u.is_approved?"Revoke":"✓ Approve"}</PrimaryBtn>
                   <OutlineBtn onClick={()=>toggleAdmin(u.id,u.is_admin)} small className="flex-1">{u.is_admin?"Remove Admin":"⭐ Make Admin"}</OutlineBtn>
                 </div>
+                <button onClick={()=>onViewAs&&onViewAs(u)}
+                  className="w-full mt-2 py-2.5 rounded-2xl text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                  style={{background:"rgba(124,111,224,0.12)",border:"1px solid rgba(124,111,224,0.3)",color:"#a78bfa"}}>
+                  👁 View as this user
+                </button>
               </div>
             </div>
           </Card>
@@ -1939,6 +1944,7 @@ export default function App() {
   const [toast,setToast]=useState(null);
   const [showOnboard,setShowOnboard]=useState(false);
   const [showLogin,setShowLogin]=useState(false);
+  const [viewAs,setViewAs]=useState(null); // admin "view as user" mode — holds the impersonated profile
 
   const showToast=useCallback((msg,type="success")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3200); },[]);
 
@@ -1996,9 +2002,19 @@ export default function App() {
     </div>
   );
 
-  const user=session?.user;
-  const isApproved=profile?.is_approved||false;
-  const isAdmin=profile?.is_admin||false;
+  const realUser=session?.user;
+  const realProfile=profile;
+  const realIsAdmin=profile?.is_admin||false;
+
+  // When an admin is "viewing as" another user, the whole app behaves as that user
+  const effectiveProfile = viewAs || profile;
+  const user = viewAs ? { id:viewAs.id, email:viewAs.email, user_metadata:{ full_name:viewAs.name, avatar_url:viewAs.avatar_url } } : realUser;
+  const isApproved = viewAs ? (viewAs.is_approved||false) : (profile?.is_approved||false);
+  const isAdmin = viewAs ? false : realIsAdmin; // while impersonating, hide admin powers
+  // setProfile that also updates viewAs when impersonating
+  const setEffectiveProfile = viewAs ? (updater)=>setViewAs(prev=>typeof updater==="function"?updater(prev):updater) : setProfile;
+
+  function exitViewAs(){ setViewAs(null); setTab("manage"); showToast("Returned to your admin account"); }
 
   // Nav icons matching the reference image
   const NAV = [
@@ -2046,9 +2062,9 @@ export default function App() {
         <div className="flex items-center gap-3">
           {user?(
             <div className="flex items-center gap-2">
-              <Av name={profile?.name} url={profile?.avatar_url} color={pal(user.id)} size="sm" ring/>
-              <span className="text-white/60 text-sm">{profile?.name?.split(" ")[0]||"You"}</span>
-              <button onClick={()=>supabase.auth.signOut()} className="text-white/30 hover:text-white/60 text-xs ml-2 transition-colors">Sign out</button>
+              <Av name={effectiveProfile?.name} url={effectiveProfile?.avatar_url} color={pal(user.id)} size="sm" ring/>
+              <span className="text-white/60 text-sm">{effectiveProfile?.name?.split(" ")[0]||"You"}</span>
+              {!viewAs&&<button onClick={()=>supabase.auth.signOut()} className="text-white/30 hover:text-white/60 text-xs ml-2 transition-colors">Sign out</button>}
             </div>
           ):(
             <PrimaryBtn onClick={()=>setShowLogin(true)} small>
@@ -2057,6 +2073,22 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {/* VIEW AS banner */}
+      {viewAs&&(
+        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 px-5 py-3" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-white text-lg">👁</span>
+            <div className="min-w-0">
+              <div className="text-white font-bold text-sm truncate">Viewing as {viewAs.name||viewAs.email}</div>
+              <div className="text-white/80 text-xs truncate">Admin view-as mode · changes affect this user</div>
+            </div>
+          </div>
+          <button onClick={exitViewAs} className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap" style={{background:"rgba(0,0,0,0.25)",color:"#fff"}}>
+            ✕ Exit
+          </button>
+        </div>
+      )}
 
       {/* Content */}
       <main className="relative z-10 max-w-lg mx-auto px-5 pt-6 pb-32 md:pb-12 md:pt-8">
@@ -2072,9 +2104,9 @@ export default function App() {
             </motion.div>
           ):tab==="matching"?<MatchTab key="m" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
           :tab==="events"?<EventsTab key="e" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
-          :tab==="projects"?<ProjectsTab key="pr" user={user} profile={profile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
-          :tab==="profile"?<ProfileTab key="p" user={user} profile={profile} setProfile={setProfile} showToast={showToast} isApproved={isApproved}/>
-          :tab==="manage"&&isAdmin?<ManageTab key="a" showToast={showToast}/>
+          :tab==="projects"?<ProjectsTab key="pr" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
+          :tab==="profile"?<ProfileTab key="p" user={user} profile={effectiveProfile} setProfile={setEffectiveProfile} showToast={showToast} isApproved={isApproved}/>
+          :tab==="manage"&&realIsAdmin&&!viewAs?<ManageTab key="a" showToast={showToast} onViewAs={(u)=>{setViewAs(u);setTab("profile");showToast(`Now viewing as ${u.name||u.email}`);}}/>
           :null}
         </AnimatePresence>
       </main>
