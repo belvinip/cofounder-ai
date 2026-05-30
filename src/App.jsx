@@ -8,6 +8,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 const ADMIN_EMAIL = "belvinip@gmail.com";
 const INDUSTRIES = ["FinTech","HealthTech","EdTech","Climate","Web3","E-commerce","SaaS","Consumer","DeepTech","Other"];
+const PARTNER_ROLES = ["Business Partner","Co-Founder","Technical Partner","Marketing Partner","Operations Partner","Sales Partner","Investor","Advisor","Mentor","Contractor","Employee"];
 
 const PALETTE = ["#7c6fe0","#a78bfa","#06b6d4","#ec4899","#10b981","#f59e0b","#ef4444","#3b82f6"];
 const pal = (id) => PALETTE[(id?.charCodeAt(0)||0) % PALETTE.length];
@@ -1238,126 +1239,246 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
 }
 
 // ════════════════════════════════════════════════════════
-// CHAT / INBOX TAB
+// PROJECT JOIN REQUESTS (shown in Profile → Project)
 // ════════════════════════════════════════════════════════
-function ChatTab({ user, showToast }) {
-  const [reqs, setReqs] = useState([]);
-  const [profs, setProfs] = useState({});
+function ProjectJoinRequests({ user, showToast }) {
+  const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeChat, setActiveChat] = useState(null);
 
   async function load() {
     if(!user) return;
-    try {
-      const {data}=await supabase.from("match_requests").select("*").or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`).order("created_at",{ascending:false});
-      setReqs(data||[]);
-      const ids=[...new Set((data||[]).flatMap(r=>[r.from_user_id,r.to_user_id]).filter(id=>id!==user.id))];
-      if(ids.length){
-        const {data:p}=await supabase.from("profiles").select("*").in("id",ids);
-        const m={}; (p||[]).forEach(x=>m[x.id]=x); setProfs(m);
-      }
-    } catch(e){}
+    const {data} = await supabase.from("match_requests").select("*").eq("to_user_id",user.id);
+    const reqs = data||[];
+    if(reqs.length){
+      const {data:profs} = await supabase.from("profiles").select("*").in("id", reqs.map(r=>r.from_user_id));
+      setRequests(reqs.map(r=>({...r, sender:(profs||[]).find(p=>p.id===r.from_user_id)})).filter(r=>r.sender));
+    } else setRequests([]);
     setLoading(false);
   }
   useEffect(()=>{ load(); },[user]);
 
-  async function act(req,status) {
-    try {
-      await supabase.from("match_requests").update({status}).eq("id",req.id);
-      setReqs(r=>r.map(x=>x.id===req.id?{...x,status}:x));
-      showToast(status==="accepted"?"Matched! Contact revealed ✓":"Declined");
-    } catch(e){showToast(e.message,"error");}
+  async function respond(id,status){
+    const {error}=await supabase.from("match_requests").update({status}).eq("id",id);
+    if(error){showToast(error.message,"error");return;}
+    showToast(status==="accepted"?"Accepted! Contact details now shared ✓":"Request declined");
+    load();
   }
 
-  const accepted = reqs.filter(r=>r.status==="accepted");
-  const pending = reqs.filter(r=>r.status==="pending"&&r.to_user_id===user?.id);
+  const pending = requests.filter(r=>r.status==="pending");
+  const accepted = requests.filter(r=>r.status==="accepted");
 
-  if(!user) return (
-    <div className="text-center py-20">
-      <div className="text-4xl mb-4">💬</div>
-      <div className="text-white/50 text-sm">Sign in to view your chats</div>
-    </div>
+  return (
+    <Card className="p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="text-amber-400">🔔</span>
+        <span className="text-white font-bold text-base">Join Requests to My Project</span>
+        {pending.length>0&&<span className="px-2.5 py-0.5 rounded-full text-xs font-semibold" style={{background:"rgba(245,158,11,0.2)",color:"#fbbf24"}}>{pending.length}</span>}
+      </div>
+
+      {loading&&<div className="text-white/30 text-sm text-center py-4">Loading…</div>}
+      {!loading&&requests.length===0&&<div className="text-white/30 text-sm text-center py-4">No one has requested to join your project yet</div>}
+
+      {pending.map(req=>{
+        const s=req.sender;
+        return (
+          <div key={req.id} className="p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+            <div className="flex items-start gap-3">
+              <Av name={s.name} url={s.avatar_url} color={pal(s.id)} size="sm" ring/>
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-bold text-sm">{s.name}</div>
+                <div className="text-white/40 text-xs">{s.role}{s.location?` · ${s.location}`:""}</div>
+                {req.role_applied&&<div className="text-purple-300 text-xs mt-1">wants to join as: <strong>{req.role_applied}</strong></div>}
+                {s.skills?.length>0&&<div className="flex flex-wrap gap-1 mt-2">{s.skills.slice(0,3).map(sk=><SkillChip key={sk} label={sk}/>)}</div>}
+                <div className="flex gap-2 mt-3">
+                  <PrimaryBtn onClick={()=>respond(req.id,"accepted")} small className="flex-1">✓ Accept</PrimaryBtn>
+                  <OutlineBtn onClick={()=>respond(req.id,"declined")} small className="flex-1">✕ Reject</OutlineBtn>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {accepted.length>0&&(
+        <div className="space-y-2 pt-2">
+          <div className="text-emerald-400 text-xs font-semibold uppercase tracking-wider">✓ Accepted Members</div>
+          {accepted.map(req=>{
+            const s=req.sender;
+            return (
+              <div key={req.id} className="p-3 rounded-2xl" style={{background:"rgba(16,185,129,0.06)",border:"1px solid rgba(16,185,129,0.2)"}}>
+                <div className="flex items-center gap-3">
+                  <Av name={s.name} url={s.avatar_url} color={pal(s.id)} size="sm" ring/>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-semibold text-sm">{s.name}{req.role_applied?` · ${req.role_applied}`:""}</div>
+                    <div className="text-white/55 text-xs mt-0.5">📧 {s.email}{s.mobile?`  ·  📱 ${s.mobile}`:""}</div>
+                    {s.whatsapp&&<a href={`https://wa.me/${s.whatsapp.replace(/[^0-9]/g,"")}`} target="_blank" rel="noreferrer" className="text-green-400 text-xs">💬 WhatsApp</a>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
+}
+
+// ════════════════════════════════════════════════════════
+// PROJECTS TAB — browse & join others' projects
+// ════════════════════════════════════════════════════════
+function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin }) {
+  const [search, setSearch] = useState("");
+  const [filterIndustry, setFilterIndustry] = useState("");
+  const [filterRole, setFilterRole] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [projects, setProjects] = useState([]);
+  const [myRequests, setMyRequests] = useState({}); // owner_id -> request
+  const [selected, setSelected] = useState(null);
+  const [roleModal, setRoleModal] = useState(null); // project to apply to
+
+  async function load() {
+    // Projects = approved profiles that have a project_name
+    const {data} = await supabase.from("profiles").select("*").eq("is_approved",true).not("project_name","is",null);
+    setProjects((data||[]).filter(p=>p.project_name && p.id!==user?.id));
+    if(user){
+      const {data:reqs} = await supabase.from("match_requests").select("*").eq("from_user_id",user.id);
+      const m={}; (reqs||[]).forEach(r=>{ m[r.to_user_id]=r; }); setMyRequests(m);
+    }
+  }
+  useEffect(()=>{ load(); },[user]);
+
+  const filtered = projects.filter(p=>{
+    const q=search.toLowerCase();
+    const matchesSearch=!search||(p.project_name||"").toLowerCase().includes(q)||(p.project_pitch||"").toLowerCase().includes(q)||(p.name||"").toLowerCase().includes(q)||(p.location||"").toLowerCase().includes(q);
+    const matchesIndustry=!filterIndustry||p.project_industry===filterIndustry;
+    const matchesRole=!filterRole||(p.roles_needed||[]).includes(filterRole);
+    return matchesSearch&&matchesIndustry&&matchesRole;
+  });
+
+  async function requestJoin(p, role) {
+    if(requireAuth && !requireAuth()) return;
+    if(!isApproved){showToast("Your account is pending admin approval","error");return;}
+    try {
+      const {data,error}=await supabase.from("match_requests").insert({from_user_id:user.id,to_user_id:p.id,role_applied:role}).select().single();
+      if(error) throw error;
+      setMyRequests(m=>({...m,[p.id]:data}));
+      showToast(`Request sent to join ${p.project_name} ✓`);
+      setRoleModal(null);
+    } catch(e){showToast(e.message||"Error","error");}
+  }
 
   return (
     <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-14}} transition={{duration:0.28}} className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold" style={{background:"linear-gradient(135deg,#7cb9e8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Messages</h1>
-        <p className="text-white/45 text-sm mt-1">Your connections and partnership requests</p>
+        <h1 className="text-3xl font-bold leading-tight" style={{background:"linear-gradient(135deg,#7cb9e8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Discover Projects</h1>
+        <p className="text-white/45 text-sm mt-1">Find projects to join and request to partner up</p>
       </div>
 
-      {loading&&<div className="text-center text-white/30 py-12 text-sm">Loading…</div>}
-
-      {/* Pending requests */}
-      {pending.length>0&&(
-        <div className="space-y-3">
-          <SectionLabel icon={<span className="text-amber-400">🔔</span>} text="Incoming Requests" count={pending.length}/>
-          {pending.map(req=>{
-            const o=profs[req.from_user_id]; const c=pal(o?.id);
-            return (
-              <Card key={req.id} className="p-4">
-                <div className="flex items-start gap-3">
-                  <Av name={o?.name} url={o?.avatar_url} color={c} size="sm" ring/>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-white font-bold text-sm">{o?.name||"Someone"}</div>
-                    <div className="text-white/40 text-xs">{o?.role}</div>
-                    {o?.project_name&&<div className="text-white/30 text-xs mt-0.5">🚀 {o.project_name}</div>}
-                    <div className="flex gap-2 mt-3">
-                      <PrimaryBtn onClick={()=>act(req,"accepted")} small className="flex-1">✓ Accept</PrimaryBtn>
-                      <OutlineBtn onClick={()=>act(req,"declined")} small className="flex-1">✕ Decline</OutlineBtn>
-                    </div>
+      {/* Search + filter */}
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          <div className="flex-1"><SearchBar value={search} onChange={setSearch} placeholder="Search projects by name, pitch, founder..."/></div>
+          <button onClick={()=>setShowFilters(!showFilters)} className="w-12 h-12 rounded-2xl flex items-center justify-center text-lg flex-shrink-0 transition-all" style={showFilters||filterIndustry||filterRole?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}:{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>⚙</button>
+        </div>
+        <AnimatePresence>
+          {showFilters&&(
+            <motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}} style={{overflow:"hidden"}}>
+              <Card className="p-4 space-y-3">
+                <div>
+                  <div className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Industry</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button onClick={()=>setFilterIndustry("")} className="px-3 py-1 rounded-full text-xs font-medium transition-all" style={!filterIndustry?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>All</button>
+                    {INDUSTRIES.map(ind=>(<button key={ind} onClick={()=>setFilterIndustry(filterIndustry===ind?"":ind)} className="px-3 py-1 rounded-full text-xs font-medium transition-all" style={filterIndustry===ind?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>{ind}</button>))}
                   </div>
                 </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Active chats */}
-      {accepted.length>0&&(
-        <div className="space-y-3">
-          <SectionLabel icon={<span>💬</span>} text="Active Chats" count={accepted.length}/>
-          {accepted.map(req=>{
-            const oid=req.from_user_id===user?.id?req.to_user_id:req.from_user_id;
-            const o=profs[oid]; const c=pal(o?.id);
-            return (
-              <motion.button key={req.id} onClick={()=>setActiveChat({matchId:req.id,other:o})} className="w-full text-left" whileHover={{scale:1.01}} whileTap={{scale:0.99}}>
-                <Card className="p-4">
-                  <div className="flex items-center gap-3">
-                    <Av name={o?.name} url={o?.avatar_url} color={c} size="md" ring/>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white font-bold text-sm">{o?.name||"Unknown"}</div>
-                      <div className="text-white/40 text-xs">{o?.role}</div>
-                      <div className="text-white/30 text-xs mt-0.5">📧 {o?.email}</div>
-                    </div>
-                    <div className="text-white/30 text-xl">›</div>
+                <div>
+                  <div className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Role Needed</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button onClick={()=>setFilterRole("")} className="px-3 py-1 rounded-full text-xs font-medium transition-all" style={!filterRole?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>All</button>
+                    {PARTNER_ROLES.map(r=>(<button key={r} onClick={()=>setFilterRole(filterRole===r?"":r)} className="px-3 py-1 rounded-full text-xs font-medium transition-all" style={filterRole===r?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>{r}</button>))}
                   </div>
-                </Card>
-              </motion.button>
-            );
-          })}
-        </div>
-      )}
+                </div>
+                {(filterIndustry||filterRole)&&<button onClick={()=>{setFilterIndustry("");setFilterRole("");}} className="text-white/40 text-xs hover:text-white/70">✕ Clear filters</button>}
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
-      {!loading&&reqs.length===0&&(
-        <Card className="p-12 text-center">
-          <div className="text-4xl mb-3">💬</div>
-          <div className="text-white/50 text-sm">No conversations yet</div>
-          <div className="text-white/30 text-xs mt-1">Send a partnership request to start chatting</div>
-        </Card>
-      )}
+      {/* Project cards */}
+      <div className="space-y-4">
+        {filtered.length===0&&<div className="text-white/30 text-sm text-center py-10">No projects found. Be the first to add yours in Profile → Project!</div>}
+        {filtered.map((p,i)=>{
+          const req=myRequests[p.id];
+          const status=req?.status;
+          return (
+            <motion.div key={p.id} initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:i*0.04}}>
+              <Card className="p-5">
+                <div className="flex items-start gap-3 mb-3">
+                  <button onClick={()=>setSelected(p)}><Av name={p.name} url={p.avatar_url} color={pal(p.id)} size="md" ring/></button>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-bold text-base">{p.project_name}</div>
+                    <div className="text-white/45 text-sm">by {p.name}{p.role?` · ${p.role}`:""}</div>
+                    {p.location&&<div className="text-white/35 text-xs mt-0.5">📍 {p.location}</div>}
+                  </div>
+                  {p.project_industry&&<SkillChip label={p.project_industry}/>}
+                </div>
+                {p.project_pitch&&<p className="text-white/50 text-sm leading-relaxed mb-3 line-clamp-3">{p.project_pitch}</p>}
+                {p.roles_needed?.length>0&&(
+                  <div className="mb-4">
+                    <div className="text-white/35 text-xs uppercase tracking-wider mb-1.5">Looking for</div>
+                    <div className="flex flex-wrap gap-1.5">{p.roles_needed.map(r=><span key={r} className="px-2.5 py-1 rounded-full text-xs font-medium" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa",border:"1px solid rgba(124,111,224,0.25)"}}>{r}</span>)}</div>
+                  </div>
+                )}
+                {status==="accepted"?(
+                  <div className="p-3 rounded-2xl" style={{background:"rgba(16,185,129,0.08)",border:"1px solid rgba(16,185,129,0.2)"}}>
+                    <div className="text-emerald-400 text-xs font-semibold mb-1">✓ You've joined — contact revealed</div>
+                    <div className="text-white/60 text-xs">📧 {p.email}{p.mobile?`  ·  📱 ${p.mobile}`:""}</div>
+                    {p.whatsapp&&<a href={`https://wa.me/${p.whatsapp.replace(/[^0-9]/g,"")}`} target="_blank" rel="noreferrer" className="text-green-400 text-xs">💬 WhatsApp</a>}
+                  </div>
+                ):status==="pending"?(
+                  <PrimaryBtn disabled className="w-full">⏳ Request Pending</PrimaryBtn>
+                ):status==="declined"?(
+                  <PrimaryBtn disabled className="w-full">Request Declined</PrimaryBtn>
+                ):(
+                  <PrimaryBtn onClick={()=>{ if(requireAuth&&!requireAuth())return; setRoleModal(p); }} className="w-full">🤝 Request to Join</PrimaryBtn>
+                )}
+                <button onClick={()=>setSelected(p)} className="w-full mt-2 text-white/40 hover:text-white/70 text-xs transition-colors">View full profile →</button>
+              </Card>
+            </motion.div>
+          );
+        })}
+      </div>
 
-      <AnimatePresence>{activeChat&&<ChatModal matchId={activeChat.matchId} other={activeChat.other} me={user} onClose={()=>setActiveChat(null)}/>}</AnimatePresence>
+      {/* Role selection modal */}
+      <AnimatePresence>
+        {roleModal&&(
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4" onClick={e=>e.target===e.currentTarget&&setRoleModal(null)}>
+            <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}} className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl p-6" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
+              <div className="text-white font-bold text-lg mb-1">Join {roleModal.project_name}</div>
+              <div className="text-white/45 text-sm mb-4">Which role are you applying for?</div>
+              <div className="flex flex-wrap gap-2 mb-5">
+                {(roleModal.roles_needed?.length?roleModal.roles_needed:PARTNER_ROLES).map(r=>(
+                  <button key={r} onClick={()=>requestJoin(roleModal,r)} className="px-3 py-2 rounded-2xl text-sm font-semibold transition-all" style={{background:CARD_BG,border:`1px solid ${BORDER}`,color:"#a78bfa"}}>{r}</button>
+                ))}
+              </div>
+              <OutlineBtn onClick={()=>setRoleModal(null)} className="w-full">Cancel</OutlineBtn>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>{selected&&<ProfileModal p={selected} onClose={()=>setSelected(null)} matchState={myRequests[selected.id]} user={user} isAdmin={isAdmin} showToast={showToast} onRequest={(p)=>setRoleModal(p)} onLoginRequired={()=>{setSelected(null);requireAuth&&requireAuth();}}/>}</AnimatePresence>
     </motion.div>
   );
 }
+
 
 // ════════════════════════════════════════════════════════
 // PROFILE TAB
 // ════════════════════════════════════════════════════════
 function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
-  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:""});
+  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[]});
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState("identity");
@@ -1365,7 +1486,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
   const avatarInputRef = useRef();
 
   useEffect(()=>{
-    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||""});
+    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[]});
   },[profile]);
 
   const pitchScore=(()=>{let s=0;if(form.project_name?.length>3)s+=25;if(form.project_pitch?.length>20)s+=30;if(form.project_pitch?.length>80)s+=20;if(form.project_industry)s+=25;return Math.min(s,100);})();
@@ -1391,7 +1512,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         showToast("WhatsApp must be an Australian number starting with +61","error");
         setSaving(false); return;
       }
-      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,updated_at:new Date().toISOString()}).eq("id",user.id);
+      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,updated_at:new Date().toISOString()}).eq("id",user.id);
       if(error) throw error;
       setProfile(p=>({...p,...form})); showToast("Profile saved ✓");
     } catch(e){showToast(e.message,"error");}
@@ -1508,6 +1629,21 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
                   </button>
                 ))}</div>
               </div>
+              {/* Partner roles needed */}
+              <div className="space-y-2">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Looking For (select all that apply)</label>
+                <div className="flex flex-wrap gap-2">{PARTNER_ROLES.map(r=>{
+                  const sel=form.roles_needed?.includes(r);
+                  return (
+                    <button key={r} onClick={()=>setForm(f=>({...f,roles_needed:sel?f.roles_needed.filter(x=>x!==r):[...(f.roles_needed||[]),r]}))}
+                      className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all"
+                      style={sel?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>
+                      {sel?"✓ ":""}{r}
+                    </button>
+                  );
+                })}</div>
+              </div>
+
               {/* Pitch strength */}
               <div className="pt-2 space-y-2">
                 <div className="flex justify-between text-xs"><span className="text-white/35 uppercase tracking-wider">Pitch Strength</span><span className="font-semibold" style={{color:pitchScore<30?"#ef4444":pitchScore<60?"#f59e0b":pitchScore<85?"#a78bfa":"#10b981"}}>{pitchScore<30?"Weak":pitchScore<60?"Developing":pitchScore<85?"Strong":"Exceptional"}</span></div>
@@ -1516,6 +1652,9 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
                 </div>
               </div>
             </Card>
+
+            {/* Join requests to MY project */}
+            <ProjectJoinRequests user={user} showToast={showToast}/>
           </motion.div>
         )}
         {section==="contact"&&(
@@ -1869,8 +2008,8 @@ export default function App() {
     { id:"matching", label:"Match",  icon:(active)=>(
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active?2.5:2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     )},
-    { id:"chat",    label:"Chat",    icon:(active)=>(
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active?2.5:2}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    { id:"projects",    label:"Projects",    icon:(active)=>(
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active?2.5:2}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
     ), auth:true},
     { id:"profile", label:"Profile", icon:(active)=>(
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active?2.5:2}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -1933,7 +2072,7 @@ export default function App() {
             </motion.div>
           ):tab==="matching"?<MatchTab key="m" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
           :tab==="events"?<EventsTab key="e" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
-          :tab==="chat"?<ChatTab key="c" user={user} showToast={showToast}/>
+          :tab==="projects"?<ProjectsTab key="pr" user={user} profile={profile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
           :tab==="profile"?<ProfileTab key="p" user={user} profile={profile} setProfile={setProfile} showToast={showToast} isApproved={isApproved}/>
           :tab==="manage"&&isAdmin?<ManageTab key="a" showToast={showToast}/>
           :null}
