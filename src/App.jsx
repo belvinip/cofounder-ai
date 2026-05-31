@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
+import { AU_SUBURBS, AU_SUBURB_LIST } from "./auSuburbs";
 
 const SUPABASE_URL = "https://xvvjruoeggohktflwnak.supabase.co";
 const SUPABASE_ANON = "sb_publishable_Q-vS4CYYvQSsGp0rN8OhwQ_wyDXAC6p";
@@ -123,6 +124,104 @@ function BgGlow() {
     <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
       <div className="absolute top-0 right-0 w-96 h-96 rounded-full opacity-20" style={{background:"radial-gradient(circle,#1a3a4a,transparent 70%)"}}/>
       <div className="absolute bottom-1/3 left-0 w-80 h-80 rounded-full opacity-15" style={{background:"radial-gradient(circle,#1a1a3a,transparent 70%)"}}/>
+    </div>
+  );
+}
+
+// ── Suburb autocomplete (offline AU suburb list, auto-fills state) ──
+function SuburbAutocomplete({ value, onChange, showToast }) {
+  // value stored as "Suburb, STATE". Parse the suburb part for the input.
+  const suburbPart=(value||"").split(",")[0]||"";
+  const statePart=(value||"").split(",")[1]?.trim()||"";
+  const [q,setQ]=useState(suburbPart);
+  const [open,setOpen]=useState(false);
+  useEffect(()=>{ setQ((value||"").split(",")[0]||""); },[value]);
+  const matches = q.length>=1
+    ? AU_SUBURB_LIST.filter(s=>s.toLowerCase().startsWith(q.toLowerCase())).slice(0,8)
+    : [];
+  function pick(s){
+    const st=AU_SUBURBS[s];
+    onChange(`${s}, ${st}`);
+    setQ(s); setOpen(false);
+  }
+  return (
+    <div className="relative">
+      <div className="flex gap-2">
+        <input value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}} onFocus={()=>setOpen(true)}
+          onBlur={()=>setTimeout(()=>setOpen(false),150)}
+          placeholder="Start typing your suburb…"
+          className="flex-1 rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+          style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+        <div className="rounded-2xl px-4 py-3 flex items-center justify-center font-semibold flex-shrink-0"
+          style={{background:"rgba(124,111,224,0.12)",border:"1px solid rgba(124,111,224,0.3)",color:statePart?"#a78bfa":"rgba(255,255,255,0.3)",minWidth:"64px",fontSize:"14px"}}>
+          {statePart||"State"}
+        </div>
+      </div>
+      {open&&matches.length>0&&(
+        <div className="absolute z-50 mt-1 w-full rounded-2xl overflow-hidden" style={{background:"#161b2e",border:`1px solid ${BORDER}`,boxShadow:"0 12px 40px rgba(0,0,0,0.5)"}}>
+          {matches.map(s=>(
+            <button key={s} onMouseDown={()=>pick(s)}
+              className="w-full text-left px-4 py-2.5 text-sm text-white/80 hover:bg-white/10 flex items-center justify-between transition-colors">
+              <span>{s}</span>
+              <span className="text-white/35 text-xs">{AU_SUBURBS[s]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {open&&q.length>=1&&matches.length===0&&(
+        <div className="absolute z-50 mt-1 w-full rounded-2xl px-4 py-3 text-xs text-white/40" style={{background:"#161b2e",border:`1px solid ${BORDER}`}}>
+          No Australian suburb found. Try a major suburb name.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Full address autocomplete via OpenStreetMap Nominatim (AU only, free) ──
+function AddressAutocomplete({ value, onChange, placeholder }) {
+  const [q,setQ]=useState(value||"");
+  const [results,setResults]=useState([]);
+  const [open,setOpen]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const tRef=useRef();
+  useEffect(()=>{ setQ(value||""); },[value]);
+  function onType(v){
+    setQ(v); onChange(v); setOpen(true);
+    clearTimeout(tRef.current);
+    if(v.trim().length<3){ setResults([]); return; }
+    tRef.current=setTimeout(async()=>{
+      setLoading(true);
+      try {
+        const url=`https://nominatim.openstreetmap.org/search?format=json&countrycodes=au&addressdetails=1&limit=6&q=${encodeURIComponent(v)}`;
+        const r=await fetch(url,{headers:{"Accept-Language":"en"}});
+        const data=await r.json();
+        setResults(Array.isArray(data)?data:[]);
+      } catch(e){ setResults([]); }
+      setLoading(false);
+    },450);
+  }
+  function pick(item){
+    onChange(item.display_name);
+    setQ(item.display_name); setOpen(false); setResults([]);
+  }
+  return (
+    <div className="relative">
+      <input value={q} onChange={e=>onType(e.target.value)} onFocus={()=>setOpen(true)}
+        onBlur={()=>setTimeout(()=>setOpen(false),200)}
+        placeholder={placeholder||"Start typing the venue or address…"}
+        className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+        style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+      {open&&(loading||results.length>0)&&(
+        <div className="absolute z-50 mt-1 w-full rounded-2xl overflow-hidden" style={{background:"#161b2e",border:`1px solid ${BORDER}`,boxShadow:"0 12px 40px rgba(0,0,0,0.5)"}}>
+          {loading&&<div className="px-4 py-3 text-xs text-white/40">Searching Australian addresses…</div>}
+          {results.map((item,i)=>(
+            <button key={i} onMouseDown={()=>pick(item)}
+              className="w-full text-left px-4 py-2.5 text-sm text-white/80 hover:bg-white/10 transition-colors border-b last:border-0" style={{borderColor:BORDER}}>
+              📍 {item.display_name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1206,18 +1305,11 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
                     style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
                 </div>
               ))}
-              {/* Event location — Australian address + state */}
+              {/* Event location — Australian address autocomplete */}
               <div className="space-y-1.5">
                 <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Location (Australia only)</label>
-                <input type="text" value={(form.location||"").replace(/, (VIC|NSW|QLD|WA|SA|TAS|ACT|NT)$/,"")} onChange={e=>{const st=(form.location||"").match(/, (VIC|NSW|QLD|WA|SA|TAS|ACT|NT)$/)?.[1]||"";setForm(f=>({...f,location:`${e.target.value}${st?", "+st:""}`}));}} placeholder="Venue & street address, suburb"
-                  className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
-                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
-                <select value={(form.location||"").match(/, (VIC|NSW|QLD|WA|SA|TAS|ACT|NT)$/)?.[1]||""} onChange={e=>{const base=(form.location||"").replace(/, (VIC|NSW|QLD|WA|SA|TAS|ACT|NT)$/,"");setForm(f=>({...f,location:`${base}${base?", ":""}${e.target.value}`}));}}
-                  className="w-full rounded-2xl px-4 py-3 focus:outline-none"
-                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white",fontSize:"16px",colorScheme:"dark"}}>
-                  <option value="">Select State</option>
-                  {AU_STATES.map(s=><option key={s} value={s}>{AU_STATE_NAMES[s]} ({s})</option>)}
-                </select>
+                <AddressAutocomplete value={form.location} onChange={(v)=>setForm(f=>({...f,location:v}))} placeholder="Search venue or street address…"/>
+                <p className="text-white/25 text-xs">Start typing — pick a suggested Australian address.</p>
               </div>
               <div className="space-y-1.5">
                 <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Max Attendees</label>
@@ -1718,6 +1810,13 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
                   {p.project_industry&&<SkillChip label={p.project_industry}/>}
                 </div>
                 {p.project_pitch&&<p className="text-white/50 text-sm leading-relaxed mb-3 line-clamp-3">{p.project_pitch}</p>}
+                {(p.project_stage||p.funding_status||p.team_size)&&(
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {p.project_stage&&<span className="px-2.5 py-1 rounded-full text-xs font-medium" style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.6)",border:`1px solid ${BORDER}`}}>📈 {p.project_stage}</span>}
+                    {p.funding_status&&<span className="px-2.5 py-1 rounded-full text-xs font-medium" style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.6)",border:`1px solid ${BORDER}`}}>💰 {p.funding_status}</span>}
+                    {p.team_size&&<span className="px-2.5 py-1 rounded-full text-xs font-medium" style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.6)",border:`1px solid ${BORDER}`}}>👥 {p.team_size}</span>}
+                  </div>
+                )}
                 {p.roles_needed?.length>0&&(
                   <div className="mb-4">
                     <div className="text-white/35 text-xs uppercase tracking-wider mb-1.5">Looking for</div>
@@ -1772,7 +1871,7 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
 // PROFILE TAB
 // ════════════════════════════════════════════════════════
 function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
-  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:""});
+  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:""});
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState("identity");
@@ -1780,7 +1879,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
   const avatarInputRef = useRef();
 
   useEffect(()=>{
-    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||""});
+    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||"",headline:profile.headline||"",availability:profile.availability||"",project_stage:profile.project_stage||"",project_website:profile.project_website||"",team_size:profile.team_size||"",funding_status:profile.funding_status||""});
   },[profile]);
 
   const pitchScore=(()=>{let s=0;if(form.project_name?.length>3)s+=25;if(form.project_pitch?.length>20)s+=30;if(form.project_pitch?.length>80)s+=20;if(form.project_industry)s+=25;return Math.min(s,100);})();
@@ -1806,7 +1905,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         showToast("WhatsApp must be an Australian number starting with +61","error");
         setSaving(false); return;
       }
-      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,business_name:form.business_name,wechat:form.wechat,updated_at:new Date().toISOString()}).eq("id",user.id);
+      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,business_name:form.business_name,wechat:form.wechat,headline:form.headline,availability:form.availability,project_stage:form.project_stage,project_website:form.project_website,team_size:form.team_size,funding_status:form.funding_status,updated_at:new Date().toISOString()}).eq("id",user.id);
       if(error) throw error;
       setProfile(p=>({...p,...form})); showToast("Profile saved ✓");
     } catch(e){showToast(e.message,"error");}
@@ -1876,20 +1975,11 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
                     style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
                 </div>
               ))}
-              {/* Location — Australian city + state */}
+              {/* Location — Australian suburb (auto-fills state) */}
               <div className="space-y-1.5">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Location (Australia)</label>
-                <div className="flex gap-2">
-                  <input type="text" value={(form.location||"").split(",")[0]||""} onChange={e=>{const st=(form.location||"").split(",")[1]?.trim()||"";setForm(f=>({...f,location:`${e.target.value}${st?", "+st:""}`}));}} placeholder="City / Suburb"
-                    className="flex-1 rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
-                    style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
-                  <select value={(form.location||"").split(",")[1]?.trim()||""} onChange={e=>{const city=(form.location||"").split(",")[0]?.trim()||"";setForm(f=>({...f,location:`${city}${city?", ":""}${e.target.value}`}));}}
-                    className="rounded-2xl px-3 py-3 focus:outline-none"
-                    style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white",fontSize:"16px",colorScheme:"dark"}}>
-                    <option value="">State</option>
-                    {AU_STATES.map(s=><option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Suburb (Australia)</label>
+                <SuburbAutocomplete value={form.location} onChange={(v)=>setForm(f=>({...f,location:v}))} showToast={showToast}/>
+                <p className="text-white/25 text-xs">Type your suburb and select — the state fills in automatically.</p>
               </div>
               <div className="space-y-1.5">
                 <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Years Experience</label>
@@ -1915,6 +2005,22 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
                 <input value={newSkill} onChange={e=>setNewSkill(e.target.value)} onKeyDown={addSkill} placeholder="e.g. React, Fundraising, AI/ML…"
                   className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
                   style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Headline / Tagline</label>
+                <input value={form.headline} onChange={e=>setForm(f=>({...f,headline:e.target.value}))} placeholder="One-line summary, e.g. 'Technical founder looking for a CMO'"
+                  className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Availability</label>
+                <div className="flex flex-wrap gap-2">{["Full-time","Part-time","Weekends","Advisory","Just exploring"].map(a=>(
+                  <button key={a} onClick={()=>setForm(f=>({...f,availability:a}))}
+                    className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all"
+                    style={form.availability===a?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>
+                    {a}
+                  </button>
+                ))}</div>
               </div>
             </Card>
           </motion.div>
@@ -1943,6 +2049,38 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
                     {ind}
                   </button>
                 ))}</div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Stage</label>
+                <div className="flex flex-wrap gap-2">{["Idea","Prototype","MVP","Launched","Revenue","Scaling"].map(st=>(
+                  <button key={st} onClick={()=>setForm(f=>({...f,project_stage:st}))}
+                    className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all"
+                    style={form.project_stage===st?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>
+                    {st}
+                  </button>
+                ))}</div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Funding Status</label>
+                <div className="flex flex-wrap gap-2">{["Bootstrapped","Pre-seed","Seed","Series A+","Grant funded","Seeking investment"].map(fn=>(
+                  <button key={fn} onClick={()=>setForm(f=>({...f,funding_status:fn}))}
+                    className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all"
+                    style={form.funding_status===fn?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>
+                    {fn}
+                  </button>
+                ))}</div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Current Team Size</label>
+                <input type="number" value={form.team_size} onChange={e=>setForm(f=>({...f,team_size:e.target.value}))} placeholder="1"
+                  className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Project Website</label>
+                <input value={form.project_website} onChange={e=>setForm(f=>({...f,project_website:e.target.value}))} placeholder="https://yourproject.com"
+                  className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
               </div>
               {/* Partner roles needed */}
               <div className="space-y-2">
