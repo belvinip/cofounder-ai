@@ -658,7 +658,7 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
 
 // MATCH TAB
 // ════════════════════════════════════════════════════════
-function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin }) {
+function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs }) {
   const [search, setSearch] = useState("");
   const [filterIndustry, setFilterIndustry] = useState("");
   const [filterRole, setFilterRole] = useState("");
@@ -744,6 +744,7 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin }
   });
 
   async function handleRequest(p) {
+    if(isViewAs){showToast("View-as mode is read-only for requests. Exit view-as to act as yourself.","error");return;}
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     if(p.id?.startsWith("d")){showToast("Demo profile — real users appear here once they sign up 😊");return;}
@@ -987,7 +988,7 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin }
 // ════════════════════════════════════════════════════════
 // EVENTS TAB
 // ════════════════════════════════════════════════════════
-function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
+function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs }) {
   const [events, setEvents] = useState([]);
   const [attSet, setAttSet] = useState({});
   const [pendingAtt, setPendingAtt] = useState({});
@@ -1092,6 +1093,7 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   }
 
   async function toggleAttend(evId) {
+    if(isViewAs){showToast("View-as mode is read-only for registrations. Exit to act as yourself.","error");return;}
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     if(typeof evId==="string"&&evId.startsWith("e")){showToast("Demo event — real events you create are fully functional 😊");return;}
@@ -1134,7 +1136,9 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   });
 
   const isDemo = (ev)=>typeof ev.id==="string"&&ev.id.startsWith("e");
-  const ownsEvent = (ev) => user && (ev.creator_id===user.id || isAdmin);
+  const isCreator = (ev) => user && ev.creator_id===user.id;       // host of this event
+  const canManage = (ev) => user && (ev.creator_id===user.id || isAdmin); // edit/delete rights
+  const ownsEvent = canManage; // keep existing references working for edit/delete/attendees
   const cntOf = (ev) => ev.attendee_count || attCounts[ev.id] || 0;
 
   // Events I created (to manage attendees) — only events I personally created
@@ -1315,7 +1319,7 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
                     {ownsEvent(ev)&&!past&&(
                       <OutlineBtn onClick={()=>openEdit(ev)} className="w-full mb-2" small>✎ Edit Event</OutlineBtn>
                     )}
-                    {!past&&!ownsEvent(ev)&&(
+                    {!past&&!isCreator(ev)&&(
                       myStatus==="approved"
                         ? <OutlineBtn onClick={()=>toggleAttend(ev.id)} className="w-full" small>✓ Registered — Cancel</OutlineBtn>
                         : myStatus==="pending"
@@ -1511,7 +1515,7 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
                 )}
 
                 {/* Action */}
-                {!selectedEvent.past&&!ownsEvent(selectedEvent)&&(
+                {!selectedEvent.past&&!isCreator(selectedEvent)&&(
                   selectedEvent.attending
                     ? <OutlineBtn onClick={()=>{toggleAttend(selectedEvent.id);setSelectedEvent(null);}} className="w-full">✓ Cancel Registration</OutlineBtn>
                     : <PrimaryBtn onClick={()=>{toggleAttend(selectedEvent.id);setSelectedEvent(null);}} className="w-full" disabled={!!selectedEvent.full}>
@@ -1615,7 +1619,7 @@ function ProjectJoinRequests({ user, showToast }) {
 // ════════════════════════════════════════════════════════
 // PROJECTS TAB — browse & join others' projects
 // ════════════════════════════════════════════════════════
-function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin }) {
+function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs }) {
   const [search, setSearch] = useState("");
   const [filterIndustry, setFilterIndustry] = useState("");
   const [filterRole, setFilterRole] = useState("");
@@ -1645,6 +1649,7 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
   });
 
   async function requestJoin(p, role) {
+    if(isViewAs){showToast("View-as mode is read-only for requests. Exit view-as to act as yourself.","error");return;}
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     try {
@@ -2425,9 +2430,9 @@ export default function App() {
                 <GoogleIcon/> Sign In to Continue
               </PrimaryBtn>
             </motion.div>
-          ):tab==="matching"?<MatchTab key="m" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
-          :tab==="events"?<EventsTab key="e" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
-          :tab==="projects"?<ProjectsTab key="pr" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
+          ):tab==="matching"?<MatchTab key="m" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
+          :tab==="events"?<EventsTab key="e" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
+          :tab==="projects"?<ProjectsTab key="pr" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
           :tab==="profile"?<ProfileTab key="p" user={user} profile={effectiveProfile} setProfile={setEffectiveProfile} showToast={showToast} isApproved={isApproved}/>
           :tab==="manage"&&realIsAdmin&&!viewAs?<ManageTab key="a" showToast={showToast} onViewAs={(u)=>{setViewAs(u);setTab("profile");showToast(`Now viewing as ${u.name||u.email}`);}}/>
           :null}
