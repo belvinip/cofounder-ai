@@ -274,77 +274,185 @@ function LoginModal({ onClose }) {
     </motion.div>
   );
 }
-function ChatModal({ matchId, other, me, onClose }) {
+function ChatModal({ matchId, other, me, myProfile, onClose }) {
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [replyTo, setReplyTo] = useState(null);
+  const [menuFor, setMenuFor] = useState(null); // message id with open action menu
   const bottomRef = useRef();
   const inputRef = useRef();
+  const fileRef = useRef();
   const oc = pal(other?.id);
 
-  useEffect(()=>{
+  function fetchMsgs(first){
     supabase.from("messages").select("*, sender:profiles(name,avatar_url)").eq("match_id",matchId).order("created_at")
-      .then(({data})=>{ setMsgs(data||[]); setLoading(false); }).catch(()=>setLoading(false));
-    const iv=setInterval(()=>{
-      supabase.from("messages").select("*, sender:profiles(name,avatar_url)").eq("match_id",matchId).order("created_at")
-        .then(({data})=>{ if(data) setMsgs(data); }).catch(()=>{});
-    },3000);
+      .then(({data})=>{ if(data) setMsgs(data); if(first) setLoading(false); }).catch(()=>first&&setLoading(false));
+  }
+  useEffect(()=>{
+    fetchMsgs(true);
+    const iv=setInterval(()=>fetchMsgs(false),3000);
     inputRef.current?.focus();
     return ()=>clearInterval(iv);
   },[matchId]);
-
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs]);
+
+  async function sendMsg(payload){
+    const msg={match_id:matchId,sender_id:me.id,...payload};
+    try {
+      const {data}=await supabase.from("messages").insert(msg).select("*, sender:profiles(name,avatar_url)").single();
+      if(data) setMsgs(m=>[...m,data]);
+    } catch(e){}
+  }
 
   async function send() {
     if(!text.trim()||sending) return;
     setSending(true);
-    const msg={match_id:matchId,sender_id:me.id,content:text.trim()};
-    try {
-      const {data}=await supabase.from("messages").insert(msg).select().single();
-      if(data) setMsgs(m=>[...m,{...data,sender:{name:me.user_metadata?.full_name||me.email}}]);
-      setText("");
-    } catch(e){}
+    const content=text.trim(); setText("");
+    await sendMsg({content, reply_to: replyTo?.content?`${replyTo.sender_id===me.id?"You":other?.name}: ${replyTo.content?.slice(0,60)}`:null});
+    setReplyTo(null);
     setSending(false);
   }
+
+  async function sendThumb(){ await sendMsg({content:"👍"}); }
+
+  async function sendImage(e){
+    const file=e.target.files?.[0]; if(!file) return;
+    try {
+      const url=await uploadImage(file,"avatars","chat-"+matchId);
+      await sendMsg({content:"", image_url:url});
+    } catch(err){}
+    e.target.value="";
+  }
+
+  async function unsend(id){
+    try { await supabase.from("messages").update({content:"",image_url:null,unsent:true}).eq("id",id); fetchMsgs(false); } catch(e){}
+    setMenuFor(null);
+  }
+
+  function shareContactCard(){
+    const c={
+      name: myProfile?.name||me?.user_metadata?.full_name||"",
+      business: myProfile?.business_name||"",
+      mobile: myProfile?.mobile||"",
+      email: me?.email||myProfile?.email||"",
+      whatsapp: myProfile?.whatsapp||"",
+      wechat: myProfile?.wechat||"",
+      linkedin: myProfile?.linkedin_url||"",
+      website: myProfile?.website_url||"",
+    };
+    sendMsg({content:"", contact_card: JSON.stringify(c)});
+  }
+
+  function saveContact(c){
+    // Build a vCard and trigger download
+    const lines=["BEGIN:VCARD","VERSION:3.0"];
+    if(c.name) lines.push(`FN:${c.name}`);
+    if(c.business) lines.push(`ORG:${c.business}`);
+    if(c.mobile) lines.push(`TEL;TYPE=CELL:${c.mobile}`);
+    if(c.email) lines.push(`EMAIL:${c.email}`);
+    if(c.website) lines.push(`URL:${c.website}`);
+    if(c.linkedin) lines.push(`URL;TYPE=LinkedIn:${c.linkedin}`);
+    if(c.whatsapp) lines.push(`X-WHATSAPP:${c.whatsapp}`);
+    if(c.wechat) lines.push(`X-WECHAT:${c.wechat}`);
+    lines.push("END:VCARD");
+    const blob=new Blob([lines.join("\n")],{type:"text/vcard"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a"); a.href=url; a.download=`${(c.name||"contact").replace(/\s/g,"_")}.vcf`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const fmtTime=(d)=>{ try{ return new Date(d).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}); }catch{ return ""; } };
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
       className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/70" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}}
         className="w-full max-w-md flex flex-col overflow-hidden rounded-t-3xl md:rounded-3xl mb-[72px] md:mb-0"
-        style={{height:"70vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
-        <div className="flex items-center gap-3 p-5 border-b" style={{borderColor:BORDER}}>
+        style={{height:"72vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
+
+        {/* Header */}
+        <div className="flex-shrink-0 flex items-center gap-3 p-4 border-b" style={{borderColor:BORDER}}>
           <Av name={other?.name} url={other?.avatar_url} color={oc} size="sm" ring/>
-          <div className="flex-1"><div className="text-white font-bold">{other?.name}</div><div className="text-emerald-400 text-xs">● Connected</div></div>
+          <div className="flex-1 min-w-0"><div className="text-white font-bold truncate">{other?.name}</div><div className="text-emerald-400 text-xs">● Connected</div></div>
+          <button onClick={shareContactCard} title="Share my contact card" className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa",border:"1px solid rgba(124,111,224,0.3)"}}>📇 Card</button>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">✕</button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {loading&&<div className="text-center text-white/30 py-8 text-sm">Loading…</div>}
           {!loading&&msgs.length===0&&<div className="text-center text-white/30 py-10 text-sm">Start a conversation! 👋</div>}
           {msgs.map((m,i)=>{
             const isMe=m.sender_id===me?.id;
+            let card=null; if(m.contact_card){ try{card=JSON.parse(m.contact_card);}catch{} }
             return (
-              <div key={m.id||i} className={`flex gap-2.5 ${isMe?"flex-row-reverse":""}`}>
-                {!isMe&&<Av name={m.sender?.name} url={m.sender?.avatar_url} color={oc} size="xs"/>}
-                <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${isMe?"rounded-tr-sm":"rounded-tl-sm"}`}
-                  style={isMe?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.07)",border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.85)"}}>
-                  {m.content}
-                  <div className="text-[10px] opacity-50 mt-0.5 text-right">{ago(m.created_at||new Date())}</div>
+              <div key={m.id||i} className={`flex flex-col ${isMe?"items-end":"items-start"}`}>
+                <div className={`flex gap-2.5 max-w-[80%] ${isMe?"flex-row-reverse":""}`}>
+                  {!isMe&&<Av name={m.sender?.name} url={m.sender?.avatar_url} color={oc} size="xs"/>}
+                  <div className="min-w-0">
+                    {m.reply_to&&<div className="text-[11px] text-white/35 mb-0.5 px-2 truncate border-l-2 pl-2" style={{borderColor:"#7c6fe0"}}>↩ {m.reply_to}</div>}
+                    {m.unsent?(
+                      <div className="px-4 py-2.5 rounded-2xl text-sm italic text-white/30" style={{border:`1px dashed ${BORDER}`}}>🚫 Message unsent</div>
+                    ):card?(
+                      <div className="px-4 py-3 rounded-2xl" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,minWidth:"200px"}}>
+                        <div className="text-white/40 text-[10px] uppercase tracking-wide mb-1">📇 Contact Card</div>
+                        <div className="text-white font-bold text-sm">{card.name}</div>
+                        {card.business&&<div className="text-white/60 text-xs">{card.business}</div>}
+                        <div className="mt-1 space-y-0.5 text-white/55 text-xs">
+                          {card.mobile&&<div>📱 {card.mobile}</div>}
+                          {card.email&&<div>📧 {card.email}</div>}
+                          {card.whatsapp&&<div>💬 {card.whatsapp}</div>}
+                          {card.wechat&&<div>🟢 WeChat: {card.wechat}</div>}
+                          {card.linkedin&&<div className="truncate">🔗 LinkedIn</div>}
+                        </div>
+                        <button onClick={()=>saveContact(card)} className="w-full mt-2 py-1.5 rounded-xl text-xs font-semibold text-white" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>💾 Save Contact</button>
+                      </div>
+                    ):m.image_url?(
+                      <img src={m.image_url} alt="" className="rounded-2xl max-w-full" style={{maxHeight:"240px",border:`1px solid ${BORDER}`}}/>
+                    ):(
+                      <div onClick={()=>setMenuFor(menuFor===m.id?null:m.id)} className={`px-4 py-2.5 rounded-2xl text-sm cursor-pointer ${m.content==="👍"?"text-2xl":""} ${isMe?"rounded-tr-sm":"rounded-tl-sm"}`}
+                        style={isMe?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.07)",border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.85)"}}>
+                        {m.content}
+                      </div>
+                    )}
+                    {/* time */}
+                    <div className={`text-[10px] text-white/30 mt-0.5 ${isMe?"text-right":"text-left"} px-1`}>{fmtTime(m.created_at||new Date())}</div>
+                    {/* action menu */}
+                    {menuFor===m.id&&!m.unsent&&(
+                      <div className={`flex gap-2 mt-1 ${isMe?"justify-end":"justify-start"}`}>
+                        <button onClick={()=>{setReplyTo(m);setMenuFor(null);inputRef.current?.focus();}} className="text-xs px-2 py-1 rounded-lg text-white/60" style={{background:"rgba(255,255,255,0.06)"}}>↩ Reply</button>
+                        {isMe&&<button onClick={()=>unsend(m.id)} className="text-xs px-2 py-1 rounded-lg text-red-400" style={{background:"rgba(239,68,68,0.1)"}}>🚫 Unsend</button>}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
           })}
           <div ref={bottomRef}/>
         </div>
-        <div className="p-4 flex gap-3" style={{borderTop:`1px solid ${BORDER}`}}>
+
+        {/* Reply preview */}
+        {replyTo&&(
+          <div className="flex items-center justify-between px-4 py-2 text-xs" style={{borderTop:`1px solid ${BORDER}`,background:"rgba(124,111,224,0.08)"}}>
+            <span className="text-white/55 truncate">↩ Replying to: {replyTo.content?.slice(0,40)||"message"}</span>
+            <button onClick={()=>setReplyTo(null)} className="text-white/40 ml-2">✕</button>
+          </div>
+        )}
+
+        {/* Composer */}
+        <div className="flex-shrink-0 p-3 flex items-center gap-2" style={{borderTop:`1px solid ${BORDER}`}}>
+          <button onClick={()=>fileRef.current?.click()} className="w-10 h-10 rounded-xl flex items-center justify-center text-white/50 hover:text-white flex-shrink-0" style={{background:"rgba(255,255,255,0.06)"}}>📎</button>
+          <input ref={fileRef} type="file" accept="image/*" onChange={sendImage} className="hidden"/>
           <input ref={inputRef} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()}
             placeholder="Type a message…"
-            className="flex-1 rounded-2xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none"
+            className="flex-1 min-w-0 rounded-2xl px-4 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none"
             style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
-          <motion.button onClick={send} disabled={!text.trim()||sending} whileTap={{scale:0.93}}
-            className="w-12 h-12 rounded-2xl flex items-center justify-center text-white disabled:opacity-40"
-            style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>↑</motion.button>
+          {text.trim()
+            ? <motion.button onClick={send} disabled={sending} whileTap={{scale:0.93}} className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>↑</motion.button>
+            : <motion.button onClick={sendThumb} whileTap={{scale:0.8}} className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{background:"rgba(255,255,255,0.06)"}}>👍</motion.button>}
         </div>
       </motion.div>
     </motion.div>
@@ -548,7 +656,7 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
 
 // MATCH TAB
 // ════════════════════════════════════════════════════════
-function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
+function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin }) {
   const [search, setSearch] = useState("");
   const [filterIndustry, setFilterIndustry] = useState("");
   const [filterRole, setFilterRole] = useState("");
@@ -556,6 +664,7 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   const [realProfiles, setRealProfiles] = useState([]);
   const [matchMap, setMatchMap] = useState({});
   const [chat, setChat] = useState(null);
+  const [showAllMessages, setShowAllMessages] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState(null);
   const [incomingReqs, setIncomingReqs] = useState([]);
 
@@ -592,9 +701,29 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   // Browse list: ALL real approved users + ALL demo profiles (so you always see everyone).
   // Real users first, then demos. Exclude self and exclude demos whose name collides with a real user.
   const realBrowse = realProfiles.filter(p=>p.id!==myId);
+  // Completeness score: picture is the biggest signal, then how much of the profile is filled
+  function completeness(p){
+    let s=0;
+    if(p.avatar_url) s+=100;            // picture = top priority
+    if(p.bio) s+=15;
+    if(p.role) s+=10;
+    if(p.location) s+=8;
+    if(p.skills?.length) s+=Math.min(p.skills.length,5)*4;
+    if(p.experience) s+=6;
+    if(p.project_name) s+=10;
+    if(p.project_pitch) s+=10;
+    if(p.project_industry) s+=4;
+    if(p.roles_needed?.length) s+=6;
+    if(p.linkedin_url) s+=4;
+    if(p.website_url) s+=4;
+    if(p.whatsapp) s+=4;
+    return s;
+  }
+  const sortedReal = [...realBrowse].sort((a,b)=>completeness(b)-completeness(a));
   const realNames = new Set(realBrowse.map(p=>(p.name||"").toLowerCase()));
   const demoBrowse = DEMO_PROFILES.filter(d=>!realNames.has((d.name||"").toLowerCase()));
-  const pool = [...realBrowse, ...demoBrowse];
+  // Real approved profiles always show first (sorted by completeness), demos after
+  const pool = [...sortedReal, ...demoBrowse];
 
   // Accepted connections you can message — resolve their profile from the pool/realProfiles
   const allProfilesForLookup = [...realProfiles, ...DEMO_PROFILES];
@@ -663,7 +792,7 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
             <span className="text-white/35 text-xs font-normal">({acceptedConnections.length})</span>
           </h3>
           <div className="space-y-2">
-            {acceptedConnections.map(({req,other})=>(
+            {acceptedConnections.slice(0,3).map(({req,other})=>(
               <button key={req.id} onClick={()=>setChat({matchId:req.id,other})}
                 className="w-full flex items-center gap-3 p-3 rounded-2xl transition-all hover:border-white/20 text-left"
                 style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
@@ -675,6 +804,13 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
                 <span className="text-white/30 text-lg">💬</span>
               </button>
             ))}
+            {acceptedConnections.length>3&&(
+              <button onClick={()=>setShowAllMessages(true)}
+                className="w-full py-2.5 rounded-2xl text-sm font-semibold transition-all"
+                style={{background:"rgba(124,111,224,0.12)",border:"1px solid rgba(124,111,224,0.3)",color:"#a78bfa"}}>
+                View all messages ({acceptedConnections.length})
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -811,7 +947,35 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
         })}
       </div>
 
-      <AnimatePresence>{chat&&<ChatModal matchId={chat.matchId} other={chat.other} me={user} onClose={()=>setChat(null)}/>}</AnimatePresence>
+      <AnimatePresence>{chat&&<ChatModal matchId={chat.matchId} other={chat.other} me={user} myProfile={profile} onClose={()=>setChat(null)}/>}</AnimatePresence>
+      <AnimatePresence>{showAllMessages&&(
+        <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+          className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/80"
+          onClick={e=>e.target===e.currentTarget&&setShowAllMessages(false)}>
+          <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
+            className="w-full md:max-w-md flex flex-col rounded-t-3xl md:rounded-3xl mb-[72px] md:mb-0"
+            style={{height:"80vh",maxHeight:"680px",background:"#0f1320",border:`1px solid ${BORDER}`}}>
+            <div className="flex-shrink-0 flex items-center justify-between p-5 border-b" style={{borderColor:BORDER}}>
+              <div className="text-white font-bold text-lg">💬 All Messages</div>
+              <button onClick={()=>setShowAllMessages(false)} className="w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:text-white" style={{background:"rgba(255,255,255,0.06)"}}>✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {acceptedConnections.map(({req,other})=>(
+                <button key={req.id} onClick={()=>{setShowAllMessages(false);setChat({matchId:req.id,other});}}
+                  className="w-full flex items-center gap-3 p-3 rounded-2xl transition-all hover:border-white/20 text-left"
+                  style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
+                  <Av name={other.name} url={other.avatar_url} color={pal(other.id)} size="sm" ring/>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white font-semibold text-sm truncate">{other.name}</div>
+                    <div className="text-white/40 text-xs truncate">{other.role||"Tap to open chat"}</div>
+                  </div>
+                  <span className="text-white/30 text-lg">💬</span>
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
       <AnimatePresence>{selectedProfile&&<ProfileModal p={selectedProfile} onClose={()=>setSelectedProfile(null)} onRequest={handleRequest} matchState={matchMap[selectedProfile.id]} user={user} isAdmin={isAdmin} showToast={showToast} onLoginRequired={()=>{setSelectedProfile(null);requireAuth&&requireAuth();}}/>}</AnimatePresence>
     </motion.div>
   );
@@ -1512,7 +1676,7 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
 // PROFILE TAB
 // ════════════════════════════════════════════════════════
 function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
-  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[]});
+  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:""});
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState("identity");
@@ -1520,7 +1684,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
   const avatarInputRef = useRef();
 
   useEffect(()=>{
-    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[]});
+    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||""});
   },[profile]);
 
   const pitchScore=(()=>{let s=0;if(form.project_name?.length>3)s+=25;if(form.project_pitch?.length>20)s+=30;if(form.project_pitch?.length>80)s+=20;if(form.project_industry)s+=25;return Math.min(s,100);})();
@@ -1546,7 +1710,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         showToast("WhatsApp must be an Australian number starting with +61","error");
         setSaving(false); return;
       }
-      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,updated_at:new Date().toISOString()}).eq("id",user.id);
+      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,business_name:form.business_name,wechat:form.wechat,updated_at:new Date().toISOString()}).eq("id",user.id);
       if(error) throw error;
       setProfile(p=>({...p,...form})); showToast("Profile saved ✓");
     } catch(e){showToast(e.message,"error");}
@@ -1723,6 +1887,19 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
                 <input value={form.website_url} onChange={e=>setForm(f=>({...f,website_url:e.target.value}))} placeholder="https://yourbusiness.com.au"
                   className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
                   style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Business Name</label>
+                <input value={form.business_name} onChange={e=>setForm(f=>({...f,business_name:e.target.value}))} placeholder="Your company name"
+                  className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">WeChat ID</label>
+                <input value={form.wechat} onChange={e=>setForm(f=>({...f,wechat:e.target.value}))} placeholder="your_wechat_id"
+                  className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+                <p className="text-white/25 text-xs">Business Name, WeChat & the fields above are shared when you send your Contact Card in chat.</p>
               </div>
             </Card>
           </motion.div>
@@ -2136,7 +2313,7 @@ export default function App() {
                 <GoogleIcon/> Sign In to Continue
               </PrimaryBtn>
             </motion.div>
-          ):tab==="matching"?<MatchTab key="m" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
+          ):tab==="matching"?<MatchTab key="m" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
           :tab==="events"?<EventsTab key="e" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
           :tab==="projects"?<ProjectsTab key="pr" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin}/>
           :tab==="profile"?<ProfileTab key="p" user={user} profile={effectiveProfile} setProfile={setEffectiveProfile} showToast={showToast} isApproved={isApproved}/>
