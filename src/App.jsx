@@ -9,6 +9,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 const ADMIN_EMAIL = "belvinip@gmail.com";
 const INDUSTRIES = ["FinTech","HealthTech","EdTech","Climate","Web3","E-commerce","SaaS","Consumer","DeepTech","Other"];
 const PARTNER_ROLES = ["Business Partner","Co-Founder","Technical Partner","Marketing Partner","Operations Partner","Sales Partner","Investor","Advisor","Mentor","Contractor","Employee"];
+const AU_STATES = ["VIC","NSW","QLD","WA","SA","TAS","ACT","NT"];
+const AU_STATE_NAMES = {VIC:"Victoria",NSW:"New South Wales",QLD:"Queensland",WA:"Western Australia",SA:"South Australia",TAS:"Tasmania",ACT:"Australian Capital Territory",NT:"Northern Territory"};
 
 const PALETTE = ["#7c6fe0","#a78bfa","#06b6d4","#ec4899","#10b981","#f59e0b","#ef4444","#3b82f6"];
 const pal = (id) => PALETTE[(id?.charCodeAt(0)||0) % PALETTE.length];
@@ -987,7 +989,8 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin }
 // ════════════════════════════════════════════════════════
 function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   const [events, setEvents] = useState([]);
-  const [attSet, setAttSet] = useState(new Set());
+  const [attSet, setAttSet] = useState({});
+  const [pendingAtt, setPendingAtt] = useState({});
   const [attCounts, setAttCounts] = useState({});
   const [eventAttendees, setEventAttendees] = useState({}); // eventId -> [profiles]
   const [loading, setLoading] = useState(true);
@@ -1008,17 +1011,23 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
       if(error||!evs||evs.length===0){ setEvents(DEMO_EVENTS); }
       else {
         setEvents(evs);
-        // Load all attendees with their profile info
+        // Load all attendees with their profile info + status
         const {data:att}=await supabase.from("event_attendees")
-          .select("event_id, user_id, profile:profiles(id,name,email,mobile,avatar_url,role,location)");
-        const counts={}, byEvent={}, mine=new Set();
+          .select("event_id, user_id, status, profile:profiles(id,name,email,mobile,avatar_url,role,location)");
+        const counts={}, byEvent={}, mine={}, pendingByEvent={};
         (att||[]).forEach(a=>{
-          counts[a.event_id]=(counts[a.event_id]||0)+1;
-          if(!byEvent[a.event_id]) byEvent[a.event_id]=[];
-          if(a.profile) byEvent[a.event_id].push(a.profile);
-          if(user && a.user_id===user.id) mine.add(a.event_id);
+          const st=a.status||"approved";
+          if(st==="approved"){
+            counts[a.event_id]=(counts[a.event_id]||0)+1;
+            if(!byEvent[a.event_id]) byEvent[a.event_id]=[];
+            if(a.profile) byEvent[a.event_id].push(a.profile);
+          } else if(st==="pending"){
+            if(!pendingByEvent[a.event_id]) pendingByEvent[a.event_id]=[];
+            if(a.profile) pendingByEvent[a.event_id].push(a.profile);
+          }
+          if(user && a.user_id===user.id) mine[a.event_id]=st;
         });
-        setAttCounts(counts); setEventAttendees(byEvent); setAttSet(mine);
+        setAttCounts(counts); setEventAttendees(byEvent); setAttSet(mine); setPendingAtt(pendingByEvent);
       }
     } catch(e){ setEvents(DEMO_EVENTS); }
     setLoading(false);
@@ -1065,8 +1074,8 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
         await supabase.from("events").update(payload).eq("id",editingId);
         showToast("Event updated ✓");
       } else {
-        await supabase.from("events").insert({...payload,creator_id:user.id});
-        showToast("Event created ✓");
+        await supabase.from("events").insert({...payload,creator_id:user.id,is_approved: isAdmin?true:false});
+        showToast(isAdmin?"Event created ✓":"Event submitted — awaiting admin approval ✓");
       }
       setShowForm(false); setEditingId(null);
       setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
@@ -1086,10 +1095,21 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     if(typeof evId==="string"&&evId.startsWith("e")){showToast("Demo event — real events you create are fully functional 😊");return;}
-    const attending=attSet.has(evId);
-    if(attending){ await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",user.id); }
-    else { await supabase.from("event_attendees").insert({event_id:evId,user_id:user.id}); }
+    const myStatus=attSet[evId];
+    if(myStatus){ await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",user.id); showToast("Registration cancelled"); }
+    else { await supabase.from("event_attendees").insert({event_id:evId,user_id:user.id,status:"pending"}); showToast("Registration sent — awaiting host approval ✓"); }
     load();
+  }
+
+  async function respondToAttendee(evId, userId, status) {
+    if(status==="approved"){ await supabase.from("event_attendees").update({status:"approved"}).eq("event_id",evId).eq("user_id",userId); showToast("Attendee approved ✓"); }
+    else { await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",userId); showToast("Registration declined"); }
+    load();
+  }
+
+  async function approveEvent(evId){
+    await supabase.from("events").update({is_approved:true}).eq("id",evId);
+    showToast("Event approved — now visible to everyone ✓"); load();
   }
 
   const now=new Date();
@@ -1113,10 +1133,21 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
     return matchesSearch && matchesState && matchesDate;
   });
 
+  const isDemo = (ev)=>typeof ev.id==="string"&&ev.id.startsWith("e");
   const ownsEvent = (ev) => user && (ev.creator_id===user.id || isAdmin);
-  const myEvents = filtered.filter(ev=>ownsEvent(ev));
-  const otherEvents = filtered.filter(ev=>!ownsEvent(ev));
   const cntOf = (ev) => ev.attendee_count || attCounts[ev.id] || 0;
+
+  // Events I created (to manage attendees) — only events I personally created
+  const myCreatedEvents = filtered.filter(ev=>user && ev.creator_id===user.id);
+  // Events pending admin approval (admins see these to approve)
+  const pendingApprovalEvents = filtered.filter(ev=>!isDemo(ev) && ev.is_approved===false);
+  // All approved events others can browse (demos always count as approved)
+  const approvedEvents = filtered.filter(ev=>{
+    if(isDemo(ev)) return true;
+    if(ev.is_approved===false) return false; // hide unapproved from public list
+    if(user && ev.creator_id===user.id) return false; // shown in My Events instead
+    return true;
+  });
 
   return (
     <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-14}} transition={{duration:0.28}} className="space-y-5">
@@ -1163,14 +1194,33 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
                 <input ref={coverInputRef} type="file" accept="image/*" onChange={handleCoverUpload} className="hidden"/>
               </div>
 
-              {[["Title","title","text","Event title…"],["Location","location","text","City or Online…"],["Max Attendees","max_attendees","number","50"]].map(([lb,k,t,ph])=>(
+              {[["Title","title","text","Event title…"]].map(([lb,k,t,ph])=>(
                 <div key={k} className="space-y-1.5">
                   <label className="text-white/40 text-xs font-medium uppercase tracking-wider">{lb}</label>
                   <input type={t} value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))} placeholder={ph}
-                    className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
-                    style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+                    className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+                    style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
                 </div>
               ))}
+              {/* Event location — Australian address + state */}
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Location (Australia only)</label>
+                <input type="text" value={(form.location||"").replace(/, (VIC|NSW|QLD|WA|SA|TAS|ACT|NT)$/,"")} onChange={e=>{const st=(form.location||"").match(/, (VIC|NSW|QLD|WA|SA|TAS|ACT|NT)$/)?.[1]||"";setForm(f=>({...f,location:`${e.target.value}${st?", "+st:""}`}));}} placeholder="Venue & street address, suburb"
+                  className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                <select value={(form.location||"").match(/, (VIC|NSW|QLD|WA|SA|TAS|ACT|NT)$/)?.[1]||""} onChange={e=>{const base=(form.location||"").replace(/, (VIC|NSW|QLD|WA|SA|TAS|ACT|NT)$/,"");setForm(f=>({...f,location:`${base}${base?", ":""}${e.target.value}`}));}}
+                  className="w-full rounded-2xl px-4 py-3 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white",fontSize:"16px",colorScheme:"dark"}}>
+                  <option value="">Select State</option>
+                  {AU_STATES.map(s=><option key={s} value={s}>{AU_STATE_NAMES[s]} ({s})</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Max Attendees</label>
+                <input type="number" value={form.max_attendees} onChange={e=>setForm(f=>({...f,max_attendees:e.target.value}))} placeholder="50"
+                  className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              </div>
               <div className="space-y-1.5">
                 <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Description</label>
                 <textarea value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="What's this event about?" rows={3}
@@ -1220,7 +1270,8 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
         {(()=>{
           const renderCard = (ev,i) => {
             const past=new Date(ev.event_date)<now;
-            const attending=attSet.has(ev.id);
+            const myStatus=attSet[ev.id]; // undefined | "pending" | "approved"
+            const attending=!!myStatus;
             const cnt=cntOf(ev);
             const full=ev.max_attendees&&cnt>=ev.max_attendees;
             const spotsLeft = ev.max_attendees ? ev.max_attendees - cnt : null;
@@ -1265,8 +1316,10 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
                       <OutlineBtn onClick={()=>openEdit(ev)} className="w-full mb-2" small>✎ Edit Event</OutlineBtn>
                     )}
                     {!past&&!ownsEvent(ev)&&(
-                      attending
+                      myStatus==="approved"
                         ? <OutlineBtn onClick={()=>toggleAttend(ev.id)} className="w-full" small>✓ Registered — Cancel</OutlineBtn>
+                        : myStatus==="pending"
+                        ? <OutlineBtn onClick={()=>toggleAttend(ev.id)} className="w-full" small>⏳ Awaiting Host Approval — Cancel</OutlineBtn>
                         : <PrimaryBtn onClick={()=>toggleAttend(ev.id)} className="w-full" disabled={!!full}>
                             {full?"Event Full":"Register to Attend"}
                           </PrimaryBtn>
@@ -1281,21 +1334,59 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
             <>
               {loading&&<div className="text-center text-white/30 py-12 text-sm">Loading events…</div>}
 
-              {/* MY EVENTS */}
-              {myEvents.length>0&&(
+              {/* PENDING ADMIN APPROVAL (admins only) */}
+              {isAdmin&&pendingApprovalEvents.length>0&&(
+                <div className="mb-8">
+                  <SectionLabel
+                    icon={<span className="text-amber-400">⏳</span>}
+                    text="Pending Approval" count={pendingApprovalEvents.length}/>
+                  <div className="space-y-4">{pendingApprovalEvents.map((ev,i)=>(
+                    <Card key={ev.id} className="p-4" style={{border:"1px solid rgba(245,158,11,0.3)"}}>
+                      <div className="text-white font-bold">{ev.title}</div>
+                      <div className="text-white/45 text-sm mb-1">by {ev.creator?.name||"Unknown"} · 📍 {ev.location||"TBA"}</div>
+                      <div className="text-white/35 text-xs mb-3">{ev.event_date?new Date(ev.event_date).toLocaleString():""}</div>
+                      <div className="flex gap-2">
+                        <PrimaryBtn onClick={()=>approveEvent(ev.id)} small className="flex-1">✓ Approve Event</PrimaryBtn>
+                        <OutlineBtn onClick={()=>deleteEvent(ev.id)} small className="flex-1">✕ Reject</OutlineBtn>
+                      </div>
+                    </Card>
+                  ))}</div>
+                </div>
+              )}
+
+              {/* MY EVENTS (created by me) with registration requests */}
+              {myCreatedEvents.length>0&&(
                 <div className="mb-8">
                   <SectionLabel
                     icon={<svg className="w-5 h-5" style={{color:"#a78bfa"}} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>}
-                    text="My Events" count={myEvents.length}/>
-                  <div className="space-y-4">{myEvents.map(renderCard)}</div>
+                    text="My Events" count={myCreatedEvents.length}/>
+                  {/* pending registration requests for my events */}
+                  {myCreatedEvents.map(ev=>{
+                    const pend=pendingAtt[ev.id]||[];
+                    if(pend.length===0) return null;
+                    return (
+                      <Card key={"pend-"+ev.id} className="p-4 mb-3" style={{border:"1px solid rgba(245,158,11,0.3)"}}>
+                        <div className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-2">🔔 {pend.length} pending registration{pend.length>1?"s":""} — {ev.title}</div>
+                        <div className="space-y-2">{pend.map(pr=>(
+                          <div key={pr.id} className="flex items-center gap-3">
+                            <Av name={pr.name} url={pr.avatar_url} color={pal(pr.id)} size="xs" ring/>
+                            <div className="flex-1 min-w-0"><div className="text-white text-sm font-semibold truncate">{pr.name}</div><div className="text-white/40 text-xs truncate">{pr.role}{pr.location?` · ${pr.location}`:""}</div></div>
+                            <button onClick={()=>respondToAttendee(ev.id,pr.id,"approved")} className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>✓</button>
+                            <button onClick={()=>respondToAttendee(ev.id,pr.id,"declined")} className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{background:"rgba(239,68,68,0.12)",color:"#f87171"}}>✕</button>
+                          </div>
+                        ))}</div>
+                      </Card>
+                    );
+                  })}
+                  <div className="space-y-4">{myCreatedEvents.map(renderCard)}</div>
                 </div>
               )}
 
               {/* ALL EVENTS */}
               <SectionLabel
                 icon={<svg className="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
-                text="All Events" count={otherEvents.length}/>
-              <div className="space-y-4">{otherEvents.map(renderCard)}</div>
+                text="All Events" count={approvedEvents.length}/>
+              <div className="space-y-4">{approvedEvents.map(renderCard)}</div>
             </>
           );
         })()}
@@ -1772,7 +1863,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         {section==="identity"&&(
           <motion.div key="id" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="space-y-4">
             <Card className="p-5 space-y-4">
-              {[["Full Name","name","text","Your name"],["Role / Title","role","text","CEO, CTO, Designer…"],["Location","location","text","San Francisco, CA"],["Years Experience","experience","number","5"]].map(([lb,k,t,ph])=>(
+              {[["Full Name","name","text","Your name"],["Role / Title","role","text","CEO, CTO, Designer…"]].map(([lb,k,t,ph])=>(
                 <div key={k} className="space-y-1.5">
                   <label className="text-white/40 text-xs font-medium uppercase tracking-wider">{lb}</label>
                   <input type={t} value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))} placeholder={ph}
@@ -1780,6 +1871,27 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
                     style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
                 </div>
               ))}
+              {/* Location — Australian city + state */}
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Location (Australia)</label>
+                <div className="flex gap-2">
+                  <input type="text" value={(form.location||"").split(",")[0]||""} onChange={e=>{const st=(form.location||"").split(",")[1]?.trim()||"";setForm(f=>({...f,location:`${e.target.value}${st?", "+st:""}`}));}} placeholder="City / Suburb"
+                    className="flex-1 rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+                    style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                  <select value={(form.location||"").split(",")[1]?.trim()||""} onChange={e=>{const city=(form.location||"").split(",")[0]?.trim()||"";setForm(f=>({...f,location:`${city}${city?", ":""}${e.target.value}`}));}}
+                    className="rounded-2xl px-3 py-3 focus:outline-none"
+                    style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white",fontSize:"16px",colorScheme:"dark"}}>
+                    <option value="">State</option>
+                    {AU_STATES.map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Years Experience</label>
+                <input type="number" value={form.experience} onChange={e=>setForm(f=>({...f,experience:e.target.value}))} placeholder="5"
+                  className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              </div>
               <div className="space-y-1.5">
                 <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Bio</label>
                 <textarea value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} placeholder="What are you building and why?" rows={3}
