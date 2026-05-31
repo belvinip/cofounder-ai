@@ -310,10 +310,10 @@ function ChatModal({ matchId, other, me, onClose }) {
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/70" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/70" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}}
-        className="w-full max-w-md flex flex-col overflow-hidden rounded-t-3xl md:rounded-3xl"
-        style={{height:"72vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
+        className="w-full max-w-md flex flex-col overflow-hidden rounded-t-3xl md:rounded-3xl mb-[72px] md:mb-0"
+        style={{height:"70vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
         <div className="flex items-center gap-3 p-5 border-b" style={{borderColor:BORDER}}>
           <Av name={other?.name} url={other?.avatar_url} color={oc} size="sm" ring/>
           <div className="flex-1"><div className="text-white font-bold">{other?.name}</div><div className="text-emerald-400 text-xs">● Connected</div></div>
@@ -412,12 +412,12 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/80"
+      className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/80"
       style={{padding:0}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
-        className="w-full md:max-w-md flex flex-col rounded-t-3xl md:rounded-3xl"
-        style={{height:"92vh",maxHeight:"700px",background:"#0f1320",border:`1px solid ${BORDER}`,boxShadow:"0 -20px 60px rgba(0,0,0,0.6)"}}>
+        className="w-full md:max-w-md flex flex-col rounded-t-3xl md:rounded-3xl mb-[72px] md:mb-0"
+        style={{height:"80vh",maxHeight:"680px",background:"#0f1320",border:`1px solid ${BORDER}`,boxShadow:"0 -20px 60px rgba(0,0,0,0.6)"}}>
 
         {/* Fixed header/banner */}
         <div className="flex-shrink-0 relative p-5 pb-4 rounded-t-3xl" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.3),rgba(167,139,250,0.12))"}}>
@@ -589,9 +589,19 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
   // Core Members = ONLY real admin users from the database. Never demo profiles.
   const coreMembers = realProfiles.filter(p=>p.is_admin);
 
-  // Browse list: real approved non-admin non-self users. If no real users yet, show demos.
+  // Browse list: ALL real approved users + ALL demo profiles (so you always see everyone).
+  // Real users first, then demos. Exclude self and exclude demos whose name collides with a real user.
   const realBrowse = realProfiles.filter(p=>p.id!==myId);
-  const pool = realBrowse.length>0 ? realBrowse : DEMO_PROFILES;
+  const realNames = new Set(realBrowse.map(p=>(p.name||"").toLowerCase()));
+  const demoBrowse = DEMO_PROFILES.filter(d=>!realNames.has((d.name||"").toLowerCase()));
+  const pool = [...realBrowse, ...demoBrowse];
+
+  // Accepted connections you can message — resolve their profile from the pool/realProfiles
+  const allProfilesForLookup = [...realProfiles, ...DEMO_PROFILES];
+  const acceptedConnections = Object.entries(matchMap)
+    .filter(([,r])=>r.status==="accepted")
+    .map(([otherId,r])=>({ req:r, other:allProfilesForLookup.find(p=>p.id===otherId) }))
+    .filter(c=>c.other);
 
   const filtered = pool.filter(p=>{
     if(p.id===myId) return false; // don't show yourself in the browse list
@@ -644,6 +654,30 @@ function MatchTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
           ))}
         </div>
       </div>
+
+      {/* Messages — accepted connections you can chat with */}
+      {acceptedConnections.length>0&&(
+        <div>
+          <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+            💬 Messages
+            <span className="text-white/35 text-xs font-normal">({acceptedConnections.length})</span>
+          </h3>
+          <div className="space-y-2">
+            {acceptedConnections.map(({req,other})=>(
+              <button key={req.id} onClick={()=>setChat({matchId:req.id,other})}
+                className="w-full flex items-center gap-3 p-3 rounded-2xl transition-all hover:border-white/20 text-left"
+                style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
+                <Av name={other.name} url={other.avatar_url} color={pal(other.id)} size="sm" ring/>
+                <div className="flex-1 min-w-0">
+                  <div className="text-white font-semibold text-sm truncate">{other.name}</div>
+                  <div className="text-white/40 text-xs truncate">{other.role||"Tap to open chat"}</div>
+                </div>
+                <span className="text-white/30 text-lg">💬</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search + filter bar */}
       <div className="space-y-3">
@@ -1107,11 +1141,11 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin }) {
       <AnimatePresence>
         {selectedEvent&&(
           <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/70 p-0 md:p-4"
+            className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/70 p-0 md:p-4"
             onClick={e=>e.target===e.currentTarget&&setSelectedEvent(null)}>
             <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}}
-              className="w-full max-w-lg overflow-y-auto rounded-t-3xl md:rounded-3xl"
-              style={{maxHeight:"88vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
+              className="w-full max-w-lg overflow-y-auto rounded-t-3xl md:rounded-3xl mb-[72px] md:mb-0"
+              style={{maxHeight:"78vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
               {/* Cover image (if any) */}
               {selectedEvent.cover_url&&(
                 <div className="relative w-full overflow-hidden" style={{aspectRatio:"16/9"}}>
@@ -1453,8 +1487,8 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
       {/* Role selection modal */}
       <AnimatePresence>
         {roleModal&&(
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4" onClick={e=>e.target===e.currentTarget&&setRoleModal(null)}>
-            <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}} className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl p-6" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[85] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4" onClick={e=>e.target===e.currentTarget&&setRoleModal(null)}>
+            <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}} className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl p-6 mb-[72px] md:mb-0" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
               <div className="text-white font-bold text-lg mb-1">Join {roleModal.project_name}</div>
               <div className="text-white/45 text-sm mb-4">Which role are you applying for?</div>
               <div className="flex flex-wrap gap-2 mb-5">
