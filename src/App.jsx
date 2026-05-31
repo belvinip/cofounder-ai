@@ -1624,6 +1624,144 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
 }
 
 // ════════════════════════════════════════════════════════
+// MY PROJECTS — create/edit/delete multiple projects (3 for users, 100 for admins)
+// ════════════════════════════════════════════════════════
+function MyProjects({ user, isAdmin, showToast }) {
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // project being edited, or "new"
+  const [saving, setSaving] = useState(false);
+  const blank = {project_name:"",project_pitch:"",project_industry:"",project_stage:"",funding_status:"",team_size:"",project_website:"",roles_needed:[]};
+  const [f, setF] = useState(blank);
+  const LIMIT = isAdmin ? 100 : 3;
+
+  async function load() {
+    if(!user) return;
+    const {data} = await supabase.from("projects").select("*").eq("owner_id",user.id).order("created_at",{ascending:false});
+    setProjects(data||[]); setLoading(false);
+  }
+  useEffect(()=>{ load(); },[user]);
+
+  function startNew() {
+    if(projects.length>=LIMIT){ showToast(`You've reached your limit of ${LIMIT} project${LIMIT>1?"s":""}.`,"error"); return; }
+    setF(blank); setEditing("new");
+  }
+  function startEdit(p) {
+    setF({project_name:p.project_name||"",project_pitch:p.project_pitch||"",project_industry:p.project_industry||"",project_stage:p.project_stage||"",funding_status:p.funding_status||"",team_size:p.team_size||"",project_website:p.project_website||"",roles_needed:p.roles_needed||[]});
+    setEditing(p.id);
+  }
+
+  async function saveProject() {
+    if(!f.project_name.trim()){ showToast("Project name is required","error"); return; }
+    setSaving(true);
+    try {
+      const payload={owner_id:user.id,project_name:f.project_name,project_pitch:f.project_pitch,project_industry:f.project_industry,project_stage:f.project_stage,funding_status:f.funding_status,team_size:parseInt(f.team_size)||null,project_website:f.project_website,roles_needed:f.roles_needed};
+      if(editing==="new"){
+        const {error}=await supabase.from("projects").insert(payload); if(error) throw error;
+        showToast("Project created ✓");
+      } else {
+        const {error}=await supabase.from("projects").update(payload).eq("id",editing); if(error) throw error;
+        showToast("Project updated ✓");
+      }
+      setEditing(null); load();
+    } catch(e){ showToast(e.message,"error"); }
+    setSaving(false);
+  }
+
+  async function del(id) {
+    if(!confirm("Delete this project?")) return;
+    const {error}=await supabase.from("projects").delete().eq("id",id);
+    if(error){ showToast(error.message,"error"); return; }
+    showToast("Project deleted"); load();
+  }
+
+  if(editing){
+    return (
+      <Card className="p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="text-white font-bold">{editing==="new"?"New Project":"Edit Project"}</span>
+          <button onClick={()=>setEditing(null)} className="text-white/40 text-sm">✕ Cancel</button>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Project Name</label>
+          <input value={f.project_name} onChange={e=>setF(x=>({...x,project_name:e.target.value}))} placeholder="HealthAI Platform"
+            className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Elevator Pitch</label>
+          <textarea value={f.project_pitch} onChange={e=>setF(x=>({...x,project_pitch:e.target.value}))} placeholder="Problem → Solution → Why now?" rows={4}
+            className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none resize-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Industry</label>
+          <div className="flex flex-wrap gap-2">{INDUSTRIES.map(ind=>(
+            <button key={ind} onClick={()=>setF(x=>({...x,project_industry:ind}))} className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all" style={f.project_industry===ind?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>{ind}</button>
+          ))}</div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Stage</label>
+          <div className="flex flex-wrap gap-2">{["Idea","Prototype","MVP","Launched","Revenue","Scaling"].map(st=>(
+            <button key={st} onClick={()=>setF(x=>({...x,project_stage:st}))} className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all" style={f.project_stage===st?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>{st}</button>
+          ))}</div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Funding Status</label>
+          <div className="flex flex-wrap gap-2">{["Bootstrapped","Pre-seed","Seed","Series A+","Grant funded","Seeking investment"].map(fn=>(
+            <button key={fn} onClick={()=>setF(x=>({...x,funding_status:fn}))} className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all" style={f.funding_status===fn?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>{fn}</button>
+          ))}</div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Team Size</label>
+          <input type="number" value={f.team_size} onChange={e=>setF(x=>({...x,team_size:e.target.value}))} placeholder="1" className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Project Website</label>
+          <input value={f.project_website} onChange={e=>setF(x=>({...x,project_website:e.target.value}))} placeholder="https://yourproject.com" className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+        </div>
+        <div className="space-y-2">
+          <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Looking For (select all that apply)</label>
+          <div className="flex flex-wrap gap-2">{PARTNER_ROLES.map(r=>{
+            const sel=f.roles_needed?.includes(r);
+            return <button key={r} onClick={()=>setF(x=>({...x,roles_needed:sel?x.roles_needed.filter(y=>y!==r):[...(x.roles_needed||[]),r]}))} className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all" style={sel?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>{sel?"✓ ":""}{r}</button>;
+          })}</div>
+        </div>
+        <PrimaryBtn onClick={saveProject} loading={saving} className="w-full">{editing==="new"?"Create Project":"Save Changes"}</PrimaryBtn>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="text-white font-bold">My Projects</span>
+          <span className="text-white/35 text-xs ml-2">{projects.length}/{LIMIT}</span>
+        </div>
+        <button onClick={startNew} className="px-3 py-1.5 rounded-xl text-sm font-semibold text-white" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>+ New</button>
+      </div>
+      {loading&&<div className="text-white/30 text-sm text-center py-4">Loading…</div>}
+      {!loading&&projects.length===0&&<div className="text-white/30 text-sm text-center py-6">No projects yet. Tap "+ New" to add one.</div>}
+      {projects.map(p=>(
+        <div key={p.id} className="p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-white font-semibold text-sm">{p.project_name}</div>
+              {p.project_industry&&<span className="text-purple-300 text-xs">{p.project_industry}</span>}
+            </div>
+            <div className="flex gap-1.5 flex-shrink-0">
+              <button onClick={()=>startEdit(p)} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa"}}>Edit</button>
+              <button onClick={()=>del(p.id)} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{background:"rgba(239,68,68,0.12)",color:"#f87171"}}>Delete</button>
+            </div>
+          </div>
+          {p.project_pitch&&<p className="text-white/50 text-xs mt-1.5 line-clamp-2">{p.project_pitch}</p>}
+          {p.roles_needed?.length>0&&<div className="flex flex-wrap gap-1 mt-2">{p.roles_needed.map(r=><span key={r} className="px-2 py-0.5 rounded-full text-[10px]" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa"}}>{r}</span>)}</div>}
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+// ════════════════════════════════════════════════════════
 // PROJECT JOIN REQUESTS (shown in Profile → Project)
 // ════════════════════════════════════════════════════════
 function ProjectJoinRequests({ user, showToast }) {
@@ -1632,7 +1770,7 @@ function ProjectJoinRequests({ user, showToast }) {
 
   async function load() {
     if(!user) return;
-    const {data} = await supabase.from("match_requests").select("*").eq("to_user_id",user.id);
+    const {data} = await supabase.from("project_requests").select("*, project:projects(project_name)").eq("owner_id",user.id);
     const reqs = data||[];
     if(reqs.length){
       const {data:profs} = await supabase.from("profiles").select("*").in("id", reqs.map(r=>r.from_user_id));
@@ -1643,7 +1781,7 @@ function ProjectJoinRequests({ user, showToast }) {
   useEffect(()=>{ load(); },[user]);
 
   async function respond(id,status){
-    const {error}=await supabase.from("match_requests").update({status}).eq("id",id);
+    const {error}=await supabase.from("project_requests").update({status}).eq("id",id);
     if(error){showToast(error.message,"error");return;}
     showToast(status==="accepted"?"Accepted! Contact details now shared ✓":"Request declined");
     load();
@@ -1672,7 +1810,7 @@ function ProjectJoinRequests({ user, showToast }) {
               <div className="flex-1 min-w-0">
                 <div className="text-white font-bold text-sm">{s.name}</div>
                 <div className="text-white/40 text-xs">{s.role}{s.location?` · ${s.location}`:""}</div>
-                {req.role_applied&&<div className="text-purple-300 text-xs mt-1">wants to join as: <strong>{req.role_applied}</strong></div>}
+                {req.role_applied&&<div className="text-purple-300 text-xs mt-1">wants to join <strong>{req.project?.project_name||"your project"}</strong> as <strong>{req.role_applied}</strong></div>}
                 {s.skills?.length>0&&<div className="flex flex-wrap gap-1 mt-2">{s.skills.slice(0,3).map(sk=><SkillChip key={sk} label={sk}/>)}</div>}
                 <div className="flex gap-2 mt-3">
                   <PrimaryBtn onClick={()=>respond(req.id,"accepted")} small className="flex-1">✓ Accept</PrimaryBtn>
@@ -1722,19 +1860,21 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
   const [roleModal, setRoleModal] = useState(null); // project to apply to
 
   async function load() {
-    // Projects = approved profiles that have a project_name
-    const {data} = await supabase.from("profiles").select("*").eq("is_approved",true).not("project_name","is",null);
-    setProjects((data||[]).filter(p=>p.project_name && p.id!==user?.id));
+    // Projects now live in their own table; join owner profile for person info
+    const {data} = await supabase.from("projects")
+      .select("*, owner:profiles(id,name,role,avatar_url,location,email,mobile,whatsapp,linkedin_url,website_url)")
+      .order("created_at",{ascending:false});
+    setProjects((data||[]).filter(p=>p.owner_id!==user?.id));
     if(user){
-      const {data:reqs} = await supabase.from("match_requests").select("*").eq("from_user_id",user.id);
-      const m={}; (reqs||[]).forEach(r=>{ m[r.to_user_id]=r; }); setMyRequests(m);
+      const {data:reqs} = await supabase.from("project_requests").select("*").eq("from_user_id",user.id);
+      const m={}; (reqs||[]).forEach(r=>{ m[r.project_id]=r; }); setMyRequests(m);
     }
   }
   useEffect(()=>{ load(); },[user]);
 
   const filtered = projects.filter(p=>{
     const q=search.toLowerCase();
-    const matchesSearch=!search||(p.project_name||"").toLowerCase().includes(q)||(p.project_pitch||"").toLowerCase().includes(q)||(p.name||"").toLowerCase().includes(q)||(p.location||"").toLowerCase().includes(q);
+    const matchesSearch=!search||(p.project_name||"").toLowerCase().includes(q)||(p.project_pitch||"").toLowerCase().includes(q)||(p.owner?.name||"").toLowerCase().includes(q)||(p.owner?.location||"").toLowerCase().includes(q);
     const matchesIndustry=!filterIndustry||p.project_industry===filterIndustry;
     const matchesRole=!filterRole||(p.roles_needed||[]).includes(filterRole);
     return matchesSearch&&matchesIndustry&&matchesRole;
@@ -1745,7 +1885,7 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     try {
-      const {data,error}=await supabase.from("match_requests").insert({from_user_id:user.id,to_user_id:p.id,role_applied:role}).select().single();
+      const {data,error}=await supabase.from("project_requests").insert({from_user_id:user.id,project_id:p.id,owner_id:p.owner_id,role_applied:role}).select().single();
       if(error) throw error;
       setMyRequests(m=>({...m,[p.id]:data}));
       showToast(`Request sent to join ${p.project_name} ✓`);
@@ -1801,11 +1941,11 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
             <motion.div key={p.id} initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:i*0.04}}>
               <Card className="p-5">
                 <div className="flex items-start gap-3 mb-3">
-                  <button onClick={()=>setSelected(p)}><Av name={p.name} url={p.avatar_url} color={pal(p.id)} size="md" ring/></button>
+                  <button onClick={()=>setSelected(p)}><Av name={p.owner?.name} url={p.owner?.avatar_url} color={pal(p.owner_id)} size="md" ring/></button>
                   <div className="flex-1 min-w-0">
                     <div className="text-white font-bold text-base">{p.project_name}</div>
-                    <div className="text-white/45 text-sm">by {p.name}{p.role?` · ${p.role}`:""}</div>
-                    {p.location&&<div className="text-white/35 text-xs mt-0.5">📍 {p.location}</div>}
+                    <div className="text-white/45 text-sm">by {p.owner?.name}{p.owner?.role?` · ${p.owner.role}`:""}</div>
+                    {p.owner?.location&&<div className="text-white/35 text-xs mt-0.5">📍 {p.owner.location}</div>}
                   </div>
                   {p.project_industry&&<SkillChip label={p.project_industry}/>}
                 </div>
@@ -1826,8 +1966,8 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
                 {status==="accepted"?(
                   <div className="p-3 rounded-2xl" style={{background:"rgba(16,185,129,0.08)",border:"1px solid rgba(16,185,129,0.2)"}}>
                     <div className="text-emerald-400 text-xs font-semibold mb-1">✓ You've joined — contact revealed</div>
-                    <div className="text-white/60 text-xs">📧 {p.email}{p.mobile?`  ·  📱 ${p.mobile}`:""}</div>
-                    {p.whatsapp&&<a href={`https://wa.me/${p.whatsapp.replace(/[^0-9]/g,"")}`} target="_blank" rel="noreferrer" className="text-green-400 text-xs">💬 WhatsApp</a>}
+                    <div className="text-white/60 text-xs">📧 {p.owner?.email}{p.owner?.mobile?`  ·  📱 ${p.owner.mobile}`:""}</div>
+                    {p.owner?.whatsapp&&<a href={`https://wa.me/${p.owner.whatsapp.replace(/[^0-9]/g,"")}`} target="_blank" rel="noreferrer" className="text-green-400 text-xs">💬 WhatsApp</a>}
                   </div>
                 ):status==="pending"?(
                   <PrimaryBtn disabled className="w-full">⏳ Request Pending</PrimaryBtn>
@@ -1861,7 +2001,7 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
         )}
       </AnimatePresence>
 
-      <AnimatePresence>{selected&&<ProfileModal p={selected} onClose={()=>setSelected(null)} matchState={myRequests[selected.id]} user={user} isAdmin={isAdmin} showToast={showToast} onRequest={(p)=>setRoleModal(p)} onLoginRequired={()=>{setSelected(null);requireAuth&&requireAuth();}}/>}</AnimatePresence>
+      <AnimatePresence>{selected&&<ProfileModal p={{...selected.owner, project_name:selected.project_name, project_pitch:selected.project_pitch, project_industry:selected.project_industry}} onClose={()=>setSelected(null)} matchState={myRequests[selected.id]} user={user} isAdmin={isAdmin} showToast={showToast} onRequest={()=>setRoleModal(selected)} onLoginRequired={()=>{setSelected(null);requireAuth&&requireAuth();}}/>}</AnimatePresence>
     </motion.div>
   );
 }
@@ -2027,86 +2167,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         )}
         {section==="project"&&(
           <motion.div key="proj" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="space-y-4">
-            <Card className="p-5 space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Project Name</label>
-                <input value={form.project_name} onChange={e=>setForm(f=>({...f,project_name:e.target.value}))} placeholder="HealthAI Platform"
-                  className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none"
-                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Elevator Pitch</label>
-                <textarea value={form.project_pitch} onChange={e=>setForm(f=>({...f,project_pitch:e.target.value}))} placeholder="Problem → Solution → Why now?" rows={4}
-                  className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none resize-none"
-                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Industry</label>
-                <div className="flex flex-wrap gap-2">{INDUSTRIES.map(ind=>(
-                  <button key={ind} onClick={()=>setForm(f=>({...f,project_industry:ind}))}
-                    className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all"
-                    style={form.project_industry===ind?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>
-                    {ind}
-                  </button>
-                ))}</div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Stage</label>
-                <div className="flex flex-wrap gap-2">{["Idea","Prototype","MVP","Launched","Revenue","Scaling"].map(st=>(
-                  <button key={st} onClick={()=>setForm(f=>({...f,project_stage:st}))}
-                    className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all"
-                    style={form.project_stage===st?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>
-                    {st}
-                  </button>
-                ))}</div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Funding Status</label>
-                <div className="flex flex-wrap gap-2">{["Bootstrapped","Pre-seed","Seed","Series A+","Grant funded","Seeking investment"].map(fn=>(
-                  <button key={fn} onClick={()=>setForm(f=>({...f,funding_status:fn}))}
-                    className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all"
-                    style={form.funding_status===fn?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>
-                    {fn}
-                  </button>
-                ))}</div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Current Team Size</label>
-                <input type="number" value={form.team_size} onChange={e=>setForm(f=>({...f,team_size:e.target.value}))} placeholder="1"
-                  className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
-                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Project Website</label>
-                <input value={form.project_website} onChange={e=>setForm(f=>({...f,project_website:e.target.value}))} placeholder="https://yourproject.com"
-                  className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
-                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
-              </div>
-              {/* Partner roles needed */}
-              <div className="space-y-2">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Looking For (select all that apply)</label>
-                <div className="flex flex-wrap gap-2">{PARTNER_ROLES.map(r=>{
-                  const sel=form.roles_needed?.includes(r);
-                  return (
-                    <button key={r} onClick={()=>setForm(f=>({...f,roles_needed:sel?f.roles_needed.filter(x=>x!==r):[...(f.roles_needed||[]),r]}))}
-                      className="px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all"
-                      style={sel?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>
-                      {sel?"✓ ":""}{r}
-                    </button>
-                  );
-                })}</div>
-              </div>
-
-              {/* Pitch strength */}
-              <div className="pt-2 space-y-2">
-                <div className="flex justify-between text-xs"><span className="text-white/35 uppercase tracking-wider">Pitch Strength</span><span className="font-semibold" style={{color:pitchScore<30?"#ef4444":pitchScore<60?"#f59e0b":pitchScore<85?"#a78bfa":"#10b981"}}>{pitchScore<30?"Weak":pitchScore<60?"Developing":pitchScore<85?"Strong":"Exceptional"}</span></div>
-                <div className="h-1.5 rounded-full" style={{background:"rgba(255,255,255,0.07)"}}>
-                  <motion.div className="h-full rounded-full" style={{background:"linear-gradient(90deg,#7c6fe0,#a78bfa)",width:`${pitchScore}%`}} animate={{width:`${pitchScore}%`}} transition={{duration:0.5}}/>
-                </div>
-              </div>
-            </Card>
-
-            {/* Join requests to MY project */}
+            <MyProjects user={user} isAdmin={profile?.is_admin} showToast={showToast}/>
             <ProjectJoinRequests user={user} showToast={showToast}/>
           </motion.div>
         )}
