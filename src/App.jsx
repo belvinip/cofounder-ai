@@ -448,8 +448,8 @@ function ChatModal({ matchId, other, me, myProfile, onClose }) {
           <input ref={fileRef} type="file" accept="image/*" onChange={sendImage} className="hidden"/>
           <input ref={inputRef} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()}
             placeholder="Type a message…"
-            className="flex-1 min-w-0 rounded-2xl px-4 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none"
-            style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/>
+            className="flex-1 min-w-0 rounded-2xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none"
+            style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
           {text.trim()
             ? <motion.button onClick={send} disabled={sending} whileTap={{scale:0.93}} className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>↑</motion.button>
             : <motion.button onClick={sendThumb} whileTap={{scale:0.8}} className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{background:"rgba(255,255,255,0.06)"}}>👍</motion.button>}
