@@ -447,20 +447,23 @@ function ChatModal({ matchId, other, me, myProfile, onClose }) {
   }
 
   function saveContact(c){
-    // Build a vCard and trigger download
+    const nm=(c.name||"").trim();
+    const parts=nm.split(/\s+/);
+    const first=parts[0]||""; const last=parts.slice(1).join(" ")||"";
     const lines=["BEGIN:VCARD","VERSION:3.0"];
-    if(c.name) lines.push(`FN:${c.name}`);
+    lines.push(`N:${last};${first};;;`);
+    lines.push(`FN:${nm}`);
     if(c.business) lines.push(`ORG:${c.business}`);
-    if(c.mobile) lines.push(`TEL;TYPE=CELL:${c.mobile}`);
-    if(c.email) lines.push(`EMAIL:${c.email}`);
+    if(c.mobile) lines.push(`TEL;TYPE=CELL,VOICE:${c.mobile}`);
+    if(c.whatsapp) lines.push(`TEL;TYPE=CELL:${c.whatsapp}`);
+    if(c.email) lines.push(`EMAIL;TYPE=INTERNET:${c.email}`);
     if(c.website) lines.push(`URL:${c.website}`);
     if(c.linkedin) lines.push(`URL;TYPE=LinkedIn:${c.linkedin}`);
-    if(c.whatsapp) lines.push(`X-WHATSAPP:${c.whatsapp}`);
-    if(c.wechat) lines.push(`X-WECHAT:${c.wechat}`);
+    if(c.wechat) lines.push(`NOTE:WeChat: ${c.wechat}`);
     lines.push("END:VCARD");
-    const blob=new Blob([lines.join("\n")],{type:"text/vcard"});
+    const blob=new Blob([lines.join("\r\n")],{type:"text/vcard;charset=utf-8"});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement("a"); a.href=url; a.download=`${(c.name||"contact").replace(/\s/g,"_")}.vcf`; a.click();
+    const a=document.createElement("a"); a.href=url; a.download=`${(nm||"contact").replace(/\s/g,"_")}.vcf`; a.click();
     URL.revokeObjectURL(url);
   }
 
@@ -2094,9 +2097,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
 
       {/* My Digital Business Card */}
       <button onClick={()=>{
-        const url=`${window.location.origin}${window.location.pathname}?card=${user.id}`;
-        if(navigator.share){ navigator.share({title:`${form.name||"My"} Digital Business Card`, url}).catch(()=>{}); }
-        else { window.open(url,"_blank"); }
+        window.location.href=`${window.location.origin}${window.location.pathname}?card=${user.id}`;
       }}
         className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white transition-all"
         style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",boxShadow:"0 8px 24px rgba(124,111,224,0.35)"}}>
@@ -2497,18 +2498,27 @@ function BusinessCardPage({ userId }) {
   },[userId]);
 
   function saveContact(){
+    const nm=(p.name||"").trim();
+    const parts=nm.split(/\s+/);
+    const first=parts[0]||"";
+    const last=parts.slice(1).join(" ")||"";
     const lines=["BEGIN:VCARD","VERSION:3.0"];
-    if(p.name) lines.push(`FN:${p.name}`);
+    // N (structured) is required by many phones so the name maps correctly
+    lines.push(`N:${last};${first};;;`);
+    lines.push(`FN:${nm}`);
     if(p.business_name) lines.push(`ORG:${p.business_name}`);
     if(p.role) lines.push(`TITLE:${p.role}`);
-    if(p.mobile) lines.push(`TEL;TYPE=CELL:${p.mobile}`);
-    if(p.email) lines.push(`EMAIL:${p.email}`);
+    if(p.mobile) lines.push(`TEL;TYPE=CELL,VOICE:${p.mobile}`);
+    if(p.whatsapp) lines.push(`TEL;TYPE=CELL:${p.whatsapp}`);
+    if(p.email) lines.push(`EMAIL;TYPE=INTERNET:${p.email}`);
     if(p.website_url) lines.push(`URL:${p.website_url}`);
     if(p.linkedin_url) lines.push(`URL;TYPE=LinkedIn:${p.linkedin_url}`);
+    if(p.location) lines.push(`ADR;TYPE=WORK:;;${p.location};;;;Australia`);
+    if(p.wechat) lines.push(`NOTE:WeChat: ${p.wechat}`);
     lines.push("END:VCARD");
-    const blob=new Blob([lines.join("\n")],{type:"text/vcard"});
+    const blob=new Blob([lines.join("\r\n")],{type:"text/vcard;charset=utf-8"});
     const u=URL.createObjectURL(blob);
-    const a=document.createElement("a"); a.href=u; a.download=`${(p.name||"contact").replace(/\s/g,"_")}.vcf`; a.click();
+    const a=document.createElement("a"); a.href=u; a.download=`${(nm||"contact").replace(/\s/g,"_")}.vcf`; a.click();
     URL.revokeObjectURL(u);
   }
 
