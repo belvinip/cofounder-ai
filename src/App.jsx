@@ -227,7 +227,7 @@ function AddressAutocomplete({ value, onChange, placeholder }) {
 }
 
 function Av({ name, url, color, size="md", ring=false }) {
-  const sz = {xs:"w-8 h-8 text-xs", sm:"w-10 h-10 text-sm", md:"w-12 h-12 text-sm", lg:"w-16 h-16 text-base", xl:"w-20 h-20 text-lg"};
+  const sz = {xs:"w-8 h-8 text-xs", sm:"w-10 h-10 text-sm", md:"w-12 h-12 text-sm", lg:"w-16 h-16 text-base", xl:"w-20 h-20 text-lg", "2xl":"w-28 h-28 text-2xl"};
   const c = color||"#7c6fe0";
   const base = `${sz[size]} rounded-full flex items-center justify-center font-bold flex-shrink-0 overflow-hidden`;
   const ringStyle = ring ? {padding:"2px",background:`linear-gradient(135deg,${c},#ec4899,#f59e0b)`} : {};
@@ -2092,6 +2092,24 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         </div>
       </Card>
 
+      {/* My Digital Business Card */}
+      <button onClick={()=>{
+        const url=`${window.location.origin}${window.location.pathname}?card=${user.id}`;
+        if(navigator.share){ navigator.share({title:`${form.name||"My"} Digital Business Card`, url}).catch(()=>{}); }
+        else { window.open(url,"_blank"); }
+      }}
+        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-white transition-all"
+        style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",boxShadow:"0 8px 24px rgba(124,111,224,0.35)"}}>
+        💳 My Digital Business Card
+      </button>
+      <button onClick={()=>{
+        const url=`${window.location.origin}${window.location.pathname}?card=${user.id}`;
+        navigator.clipboard.writeText(url); showToast("Card link copied — share it anywhere ✓");
+      }}
+        className="w-full -mt-2 py-2 text-white/40 hover:text-white/70 text-xs transition-colors">
+        🔗 Copy my card link
+      </button>
+
       {/* Section tabs */}
       <div className="flex gap-2">
         {[["identity","Identity"],["project","Project"],["contact","Contact"]].map(([id,lb])=>(
@@ -2464,7 +2482,121 @@ function OnboardingModal({ user, onComplete }) {
 // ════════════════════════════════════════════════════════
 // ROOT APP
 // ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+// PUBLIC DIGITAL BUSINESS CARD — shareable, no login needed
+// ════════════════════════════════════════════════════════
+function BusinessCardPage({ userId }) {
+  const [p, setP] = useState(undefined);
+  const [copied, setCopied] = useState(false);
+  const cardUrl = `${window.location.origin}${window.location.pathname}?card=${userId}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&bgcolor=15-19-32&color=255-255-255&qzone=2&data=${encodeURIComponent(cardUrl)}`;
+
+  useEffect(()=>{
+    supabase.from("profiles").select("*").eq("id",userId).single()
+      .then(({data})=>setP(data||null)).catch(()=>setP(null));
+  },[userId]);
+
+  function saveContact(){
+    const lines=["BEGIN:VCARD","VERSION:3.0"];
+    if(p.name) lines.push(`FN:${p.name}`);
+    if(p.business_name) lines.push(`ORG:${p.business_name}`);
+    if(p.role) lines.push(`TITLE:${p.role}`);
+    if(p.mobile) lines.push(`TEL;TYPE=CELL:${p.mobile}`);
+    if(p.email) lines.push(`EMAIL:${p.email}`);
+    if(p.website_url) lines.push(`URL:${p.website_url}`);
+    if(p.linkedin_url) lines.push(`URL;TYPE=LinkedIn:${p.linkedin_url}`);
+    lines.push("END:VCARD");
+    const blob=new Blob([lines.join("\n")],{type:"text/vcard"});
+    const u=URL.createObjectURL(blob);
+    const a=document.createElement("a"); a.href=u; a.download=`${(p.name||"contact").replace(/\s/g,"_")}.vcf`; a.click();
+    URL.revokeObjectURL(u);
+  }
+
+  async function share(){
+    if(navigator.share){ try{ await navigator.share({title:`${p.name} — Digital Business Card`, url:cardUrl}); }catch{} }
+    else { navigator.clipboard.writeText(cardUrl); setCopied(true); setTimeout(()=>setCopied(false),2000); }
+  }
+
+  if(p===undefined) return (
+    <div className="min-h-screen flex items-center justify-center" style={{background:BG}}>
+      <motion.div animate={{rotate:360}} transition={{duration:2,repeat:Infinity,ease:"linear"}} className="w-10 h-10 rounded-full border-2 border-transparent" style={{borderTopColor:"#7c6fe0",borderRightColor:"#a78bfa"}}/>
+    </div>
+  );
+  if(p===null) return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center" style={{background:BG}}>
+      <div className="text-white/60 text-lg font-semibold mb-2">Card not found</div>
+      <div className="text-white/35 text-sm mb-6">This digital business card doesn't exist or was removed.</div>
+      <a href={window.location.origin} className="px-5 py-3 rounded-2xl text-white font-semibold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>Create your own free card</a>
+    </div>
+  );
+
+  const color=pal(p.id);
+  return (
+    <div className="min-h-screen flex flex-col items-center px-4 py-8" style={{background:BG}}>
+      <BgGlow/>
+      <div className="w-full max-w-md relative">
+        {/* Card */}
+        <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className="rounded-3xl overflow-hidden" style={{background:"#0f1320",border:`1px solid ${BORDER}`,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+          {/* Header banner */}
+          <div className="p-7 pb-6 text-center relative" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.35),rgba(167,139,250,0.12))"}}>
+            <div className="flex justify-center mb-4"><Av name={p.name} url={p.avatar_url} color={color} size="2xl" ring/></div>
+            <div className="text-white font-bold text-2xl">{p.name}</div>
+            {p.role&&<div className="text-white/70 text-sm mt-1">{p.role}</div>}
+            {p.business_name&&<div className="text-purple-300 text-sm mt-0.5 font-semibold">{p.business_name}</div>}
+            {p.location&&<div className="text-white/45 text-xs mt-2">📍 {p.location}</div>}
+            {p.headline&&<div className="text-white/55 text-sm mt-3 italic">"{p.headline}"</div>}
+          </div>
+
+          <div className="p-6 space-y-5">
+            {p.bio&&<p className="text-white/65 text-sm leading-relaxed text-center">{p.bio}</p>}
+
+            {/* Skills */}
+            {p.skills?.length>0&&(
+              <div className="flex flex-wrap gap-2 justify-center">{p.skills.map(s=><SkillChip key={s} label={s}/>)}</div>
+            )}
+
+            {/* Contact buttons */}
+            <div className="space-y-2">
+              {p.mobile&&<a href={`tel:${p.mobile}`} className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium text-white/80" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>📱 <span>{p.mobile}</span></a>}
+              {p.email&&<a href={`mailto:${p.email}`} className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium text-white/80" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>📧 <span className="truncate">{p.email}</span></a>}
+              {p.whatsapp&&<a href={`https://wa.me/${p.whatsapp.replace(/[^0-9]/g,"")}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium" style={{background:"rgba(37,211,102,0.12)",border:"1px solid rgba(37,211,102,0.25)",color:"#4ade80"}}>💬 <span>WhatsApp</span></a>}
+              {p.wechat&&<div className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium text-white/80" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>🟢 <span>WeChat: {p.wechat}</span></div>}
+              {p.linkedin_url&&<a href={p.linkedin_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium" style={{background:"rgba(10,102,194,0.15)",border:"1px solid rgba(10,102,194,0.3)",color:"#60a5fa"}}>🔗 <span>LinkedIn</span></a>}
+              {p.website_url&&<a href={p.website_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium text-white/80" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>🌐 <span className="truncate">{p.website_url.replace(/^https?:\/\//,"")}</span></a>}
+            </div>
+
+            {/* Save contact */}
+            <button onClick={saveContact} className="w-full py-3 rounded-2xl text-white font-semibold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>💾 Save to Contacts</button>
+
+            {/* QR + share */}
+            <div className="pt-4 flex flex-col items-center gap-3" style={{borderTop:`1px solid ${BORDER}`}}>
+              <div className="text-white/40 text-xs uppercase tracking-wider">Scan to open this card</div>
+              <img src={qrUrl} alt="QR code" className="rounded-2xl" width={180} height={180} style={{background:"#0f1320"}}/>
+              <button onClick={share} className="w-full py-3 rounded-2xl text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white"}}>
+                {copied?"✓ Link copied!":"🔗 Share this card"}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Create your own CTA */}
+        <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{delay:0.3}} className="mt-6 text-center">
+          <div className="text-white/50 text-sm mb-3">Want a free digital business card like this?</div>
+          <a href={window.location.origin} className="inline-block px-6 py-3.5 rounded-2xl text-white font-bold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",boxShadow:"0 8px 24px rgba(124,111,224,0.4)"}}>
+            ✨ Create Your Own — Free
+          </a>
+          <div className="text-white/30 text-xs mt-3">Join our founder community to create yours</div>
+        </motion.div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  // ── Public Digital Business Card route — no login required ──
+  const cardId = new URLSearchParams(window.location.search).get("card");
+  if(cardId) return <BusinessCardPage userId={cardId}/>;
+
   const [session,setSession]=useState(undefined);
   const [profile,setProfile]=useState(null);
   const [tab,setTab]=useState("events");
