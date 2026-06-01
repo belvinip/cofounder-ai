@@ -843,7 +843,7 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
   });
 
   async function handleRequest(p) {
-    if(isViewAs){showToast("View-as mode is read-only for requests. Exit view-as to act as yourself.","error");return;}
+    if(isViewAs){showToast("You're viewing as this user. Join/partnership requests can only be sent from your own account — tap Exit at the top first.","error");return;}
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     if(p.id?.startsWith("d")){showToast("Demo profile — real users appear here once they sign up 😊");return;}
@@ -1192,7 +1192,7 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
   }
 
   async function toggleAttend(evId) {
-    if(isViewAs){showToast("View-as mode is read-only for registrations. Exit to act as yourself.","error");return;}
+    if(isViewAs){showToast("You're viewing as this user. Event registration can only be done from your own account — tap Exit at the top first.","error");return;}
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     if(typeof evId==="string"&&evId.startsWith("e")){showToast("Demo event — real events you create are fully functional 😊");return;}
@@ -1881,7 +1881,7 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
   });
 
   async function requestJoin(p, role) {
-    if(isViewAs){showToast("View-as mode is read-only for requests. Exit view-as to act as yourself.","error");return;}
+    if(isViewAs){showToast("You're viewing as this user. Join/partnership requests can only be sent from your own account — tap Exit at the top first.","error");return;}
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     try {
