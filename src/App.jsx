@@ -60,7 +60,7 @@ const DEMO_PROFILES = [
 
 // ─── 30 Demo Events ───────────────────────────────────────────────────────────
 const _now = new Date();
-const fd = (days,h=10,m=0) => { const d=new Date(_now); d.setDate(d.getDate()+days); d.setHours(h,m,0,0); return d.toISOString(); };
+const fd = (days,h=10,m=0) => { const d=new Date(_now); d.setDate(d.getDate()-days-1); d.setHours(h,m,0,0); return d.toISOString(); };
 const pd = (days,h=18,m=0) => { const d=new Date(_now); d.setDate(d.getDate()-days); d.setHours(h,m,0,0); return d.toISOString(); };
 
 const DEMO_EVENTS = [
