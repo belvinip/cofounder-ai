@@ -1094,6 +1094,7 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
   const [events, setEvents] = useState([]);
   const [attSet, setAttSet] = useState({});
   const [pendingAtt, setPendingAtt] = useState({});
+  const [myEventsOpen, setMyEventsOpen] = useState(true);
   const [attCounts, setAttCounts] = useState({});
   const [eventAttendees, setEventAttendees] = useState({}); // eventId -> [profiles]
   const [loading, setLoading] = useState(true);
@@ -1116,14 +1117,14 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
         setEvents(evs);
         // Load all attendees with their profile info + status
         const {data:att}=await supabase.from("event_attendees")
-          .select("event_id, user_id, status, profile:profiles(id,name,email,mobile,avatar_url,role,location)");
+          .select("event_id, user_id, status, attended, profile:profiles(id,name,email,mobile,avatar_url,role,location)");
         const counts={}, byEvent={}, mine={}, pendingByEvent={};
         (att||[]).forEach(a=>{
           const st=a.status||"approved";
           if(st==="approved"){
             counts[a.event_id]=(counts[a.event_id]||0)+1;
             if(!byEvent[a.event_id]) byEvent[a.event_id]=[];
-            if(a.profile) byEvent[a.event_id].push(a.profile);
+            if(a.profile) byEvent[a.event_id].push({...a.profile, attended:a.attended||false});
           } else if(st==="pending"){
             if(!pendingByEvent[a.event_id]) pendingByEvent[a.event_id]=[];
             if(a.profile) pendingByEvent[a.event_id].push(a.profile);
@@ -1211,6 +1212,14 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
     load();
   }
 
+  async function toggleAttended(evId, userId, cur) {
+    await supabase.from("event_attendees").update({attended:!cur}).eq("event_id",evId).eq("user_id",userId);
+    setEventAttendees(prev=>{
+      const list=(prev[evId]||[]).map(a=>a.id===userId?{...a,attended:!cur}:a);
+      return {...prev,[evId]:list};
+    });
+  }
+
   async function approveEvent(evId){
     await supabase.from("events").update({is_approved:true}).eq("id",evId);
     showToast("Event approved — now visible to everyone ✓"); load();
@@ -1242,18 +1251,16 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
   const canManage = (ev) => user && (ev.creator_id===user.id || isAdmin); // edit/delete rights
   const ownsEvent = canManage; // keep existing references working for edit/delete/attendees
   const cntOf = (ev) => ev.attendee_count || attCounts[ev.id] || 0;
+  const isFuture = (ev) => new Date(ev.event_date) >= now;
 
-  // Events I created (to manage attendees) — only events I personally created
+  // Events I created (to manage attendees + tick attendance)
   const myCreatedEvents = filtered.filter(ev=>user && ev.creator_id===user.id);
   // Events pending admin approval (admins see these to approve)
   const pendingApprovalEvents = filtered.filter(ev=>!isDemo(ev) && ev.is_approved===false);
-  // All approved events others can browse (demos always count as approved)
-  const approvedEvents = filtered.filter(ev=>{
-    if(isDemo(ev)) return true;
-    if(ev.is_approved===false) return false; // hide unapproved from public list
-    if(user && ev.creator_id===user.id) return false; // shown in My Events instead
-    return true;
-  });
+  // Public (approved) events, split future/past
+  const publicEvents = filtered.filter(ev=> isDemo(ev) || ev.is_approved!==false );
+  const futureEvents = publicEvents.filter(isFuture);
+  const pastEvents = publicEvents.filter(ev=>!isFuture(ev));
 
   return (
     <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-14}} transition={{duration:0.28}} className="space-y-5">
@@ -1453,39 +1460,60 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
                 </div>
               )}
 
-              {/* MY EVENTS (created by me) with registration requests */}
+              {/* MY EVENTS (created by me) — toggizable, with registration requests + attendance ticking */}
               {myCreatedEvents.length>0&&(
                 <div className="mb-8">
-                  <SectionLabel
-                    icon={<svg className="w-5 h-5" style={{color:"#a78bfa"}} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>}
-                    text="My Events" count={myCreatedEvents.length}/>
-                  {/* pending registration requests for my events */}
-                  {myCreatedEvents.map(ev=>{
-                    const pend=pendingAtt[ev.id]||[];
-                    if(pend.length===0) return null;
-                    return (
-                      <Card key={"pend-"+ev.id} className="p-4 mb-3" style={{border:"1px solid rgba(245,158,11,0.3)"}}>
-                        <div className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-2">🔔 {pend.length} pending registration{pend.length>1?"s":""} — {ev.title}</div>
-                        <div className="space-y-2">{pend.map(pr=>(
-                          <div key={pr.id} className="flex items-center gap-3">
-                            <Av name={pr.name} url={pr.avatar_url} color={pal(pr.id)} size="xs" ring/>
-                            <div className="flex-1 min-w-0"><div className="text-white text-sm font-semibold truncate">{pr.name}</div><div className="text-white/40 text-xs truncate">{pr.role}{pr.location?` · ${pr.location}`:""}</div></div>
-                            <button onClick={()=>respondToAttendee(ev.id,pr.id,"approved")} className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>✓</button>
-                            <button onClick={()=>respondToAttendee(ev.id,pr.id,"declined")} className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{background:"rgba(239,68,68,0.12)",color:"#f87171"}}>✕</button>
-                          </div>
-                        ))}</div>
-                      </Card>
-                    );
-                  })}
-                  <div className="space-y-4">{myCreatedEvents.map(renderCard)}</div>
+                  <button onClick={()=>setMyEventsOpen(o=>!o)} className="w-full flex items-center justify-between mb-3">
+                    <SectionLabel
+                      icon={<svg className="w-5 h-5" style={{color:"#a78bfa"}} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>}
+                      text="My Events" count={myCreatedEvents.length}/>
+                    <span className="text-white/40 text-lg">{myEventsOpen?"▾":"▸"}</span>
+                  </button>
+                  {myEventsOpen&&(
+                    <>
+                      {/* pending registration requests for my events */}
+                      {myCreatedEvents.map(ev=>{
+                        const pend=pendingAtt[ev.id]||[];
+                        if(pend.length===0) return null;
+                        return (
+                          <Card key={"pend-"+ev.id} className="p-4 mb-3" style={{border:"1px solid rgba(245,158,11,0.3)"}}>
+                            <div className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-2">🔔 {pend.length} pending registration{pend.length>1?"s":""} — {ev.title}</div>
+                            <div className="space-y-2">{pend.map(pr=>(
+                              <div key={pr.id} className="flex items-center gap-3">
+                                <Av name={pr.name} url={pr.avatar_url} color={pal(pr.id)} size="xs" ring/>
+                                <div className="flex-1 min-w-0"><div className="text-white text-sm font-semibold truncate">{pr.name}</div><div className="text-white/40 text-xs truncate">{pr.role}{pr.location?` · ${pr.location}`:""}</div></div>
+                                <button onClick={()=>respondToAttendee(ev.id,pr.id,"approved")} className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>✓ Approve</button>
+                                <button onClick={()=>respondToAttendee(ev.id,pr.id,"declined")} className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{background:"rgba(239,68,68,0.12)",color:"#f87171"}}>✕</button>
+                              </div>
+                            ))}</div>
+                          </Card>
+                        );
+                      })}
+                      <div className="space-y-4">{myCreatedEvents.map(renderCard)}</div>
+                    </>
+                  )}
                 </div>
               )}
 
-              {/* ALL EVENTS */}
-              <SectionLabel
-                icon={<svg className="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
-                text="All Events" count={approvedEvents.length}/>
-              <div className="space-y-4">{approvedEvents.map(renderCard)}</div>
+              {/* FUTURE EVENTS */}
+              <div className="mb-8">
+                <SectionLabel
+                  icon={<svg className="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
+                  text="Future Events" count={futureEvents.length}/>
+                {futureEvents.length===0
+                  ? <div className="text-white/30 text-sm text-center py-6">No upcoming events.</div>
+                  : <div className="space-y-4">{futureEvents.map(renderCard)}</div>}
+              </div>
+
+              {/* PAST EVENTS */}
+              {pastEvents.length>0&&(
+                <div>
+                  <SectionLabel
+                    icon={<span className="text-white/40">🕓</span>}
+                    text="Past Events" count={pastEvents.length}/>
+                  <div className="space-y-4" style={{opacity:0.7}}>{pastEvents.map(renderCard)}</div>
+                </div>
+              )}
             </>
           );
         })()}
@@ -1576,7 +1604,7 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
                 {ownsEvent(selectedEvent)&&(
                   <div>
                     <div className="text-white/35 text-xs font-semibold uppercase tracking-wider mb-3">
-                      Attendees ({(eventAttendees[selectedEvent.id]||[]).length})
+                      Attendees ({(eventAttendees[selectedEvent.id]||[]).length}) · tap ✓ to mark attendance
                     </div>
                     {(eventAttendees[selectedEvent.id]||[]).length===0 ? (
                       <div className="text-white/30 text-sm py-3 text-center rounded-2xl" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
@@ -1585,13 +1613,19 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
                     ) : (
                       <div className="space-y-2">
                         {(eventAttendees[selectedEvent.id]||[]).map(att=>(
-                          <div key={att.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+                          <div key={att.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{background:att.attended?"rgba(16,185,129,0.08)":"rgba(255,255,255,0.03)",border:att.attended?"1px solid rgba(16,185,129,0.25)":`1px solid ${BORDER}`}}>
                             <Av name={att.name} url={att.avatar_url} color={pal(att.id)} size="sm" ring/>
                             <div className="flex-1 min-w-0">
                               <div className="text-white text-sm font-semibold truncate">{att.name||"Unnamed"}</div>
                               <div className="text-white/40 text-xs truncate">{att.role||"Member"}{att.location?` · ${att.location}`:""}</div>
                               <div className="text-white/50 text-xs mt-0.5 truncate">📧 {att.email}{att.mobile?`  ·  📱 ${att.mobile}`:""}</div>
                             </div>
+                            <button onClick={()=>toggleAttended(selectedEvent.id,att.id,att.attended)}
+                              className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold transition-all"
+                              style={att.attended?{background:"linear-gradient(135deg,#10b981,#34d399)",color:"#fff"}:{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.4)"}}
+                              title={att.attended?"Attended":"Mark as attended"}>
+                              ✓
+                            </button>
                           </div>
                         ))}
                       </div>
