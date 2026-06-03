@@ -74,6 +74,39 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, message: "Join request sent" }), { headers: cors });
     }
 
+    // Accept/decline a partnership request on behalf of the recipient (targetUserId = recipient)
+    if (action === "respond_partner") {
+      const { requestId, status } = body; // status: 'accepted' | 'declined'
+      const { error } = await admin.from("match_requests")
+        .update({ status }).eq("id", requestId).eq("to_user_id", targetUserId);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true, message: `Partner request ${status}` }), { headers: cors });
+    }
+
+    // Accept/decline a project join request on behalf of the project owner (targetUserId = owner)
+    if (action === "respond_join") {
+      const { requestId, status } = body;
+      const { error } = await admin.from("project_requests")
+        .update({ status }).eq("id", requestId).eq("owner_id", targetUserId);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true, message: `Join request ${status}` }), { headers: cors });
+    }
+
+    // Approve/decline an event registration on behalf of the host (targetUserId = host)
+    if (action === "respond_registration") {
+      const { eventId, attendeeId, status } = body; // status: 'approved' | 'declined'
+      if (status === "approved") {
+        const { error } = await admin.from("event_attendees")
+          .update({ status: "approved" }).eq("event_id", eventId).eq("user_id", attendeeId);
+        if (error) throw error;
+      } else {
+        const { error } = await admin.from("event_attendees")
+          .delete().eq("event_id", eventId).eq("user_id", attendeeId);
+        if (error) throw error;
+      }
+      return new Response(JSON.stringify({ ok: true, message: `Registration ${status}` }), { headers: cors });
+    }
+
     return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: cors });
   } catch (e) {
     return new Response(JSON.stringify({ error: String(e?.message || e) }), { status: 500, headers: cors });

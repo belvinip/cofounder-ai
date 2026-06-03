@@ -7,6 +7,24 @@ const SUPABASE_URL = "https://xvvjruoeggohktflwnak.supabase.co";
 const SUPABASE_ANON = "sb_publishable_Q-vS4CYYvQSsGp0rN8OhwQ_wyDXAC6p";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
+// Calls the admin-actions Edge Function to perform an action on behalf of a user.
+// The server verifies the caller is an admin before doing anything.
+async function adminAction(payload) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-actions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${session?.access_token || ""}`,
+      "apikey": SUPABASE_ANON,
+    },
+    body: JSON.stringify(payload),
+  });
+  const json = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(json.error || "Admin action failed");
+  return json;
+}
+
 const ADMIN_EMAIL = "belvinip@gmail.com";
 const INDUSTRIES = ["FinTech","HealthTech","EdTech","Climate","Web3","E-commerce","SaaS","Consumer","DeepTech","Other"];
 const PARTNER_ROLES = ["Business Partner","Co-Founder","Technical Partner","Marketing Partner","Operations Partner","Sales Partner","Investor","Advisor","Mentor","Contractor","Employee"];
@@ -846,11 +864,17 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
   });
 
   async function handleRequest(p) {
-    if(isViewAs){showToast("You're viewing as this user. Join/partnership requests can only be sent from your own account — tap Exit at the top first.","error");return;}
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     if(p.id?.startsWith("d")){showToast("Demo profile — real users appear here once they sign up 😊");return;}
     try {
+      if(isViewAs){
+        // Admin acting on behalf of this user via secure Edge Function
+        await adminAction({action:"partner_request", targetUserId:user.id, toUserId:p.id});
+        showToast(`Partnership request sent to ${p.name} (on behalf) ✓`);
+        loadRequests();
+        return;
+      }
       const {data,error}=await supabase.from("match_requests").insert({from_user_id:user.id,to_user_id:p.id}).select().single();
       if(error) throw error;
       setMatchMap(m=>({...m,[p.id]:data}));
@@ -1196,20 +1220,32 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
   }
 
   async function toggleAttend(evId) {
-    if(isViewAs){showToast("You're viewing as this user. Event registration can only be done from your own account — tap Exit at the top first.","error");return;}
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     if(typeof evId==="string"&&evId.startsWith("e")){showToast("Demo event — real events you create are fully functional 😊");return;}
     const myStatus=attSet[evId];
-    if(myStatus){ await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",user.id); showToast("Registration cancelled"); }
-    else { await supabase.from("event_attendees").insert({event_id:evId,user_id:user.id,status:"pending"}); showToast("Registration sent — awaiting host approval ✓"); }
-    load();
+    try {
+      if(isViewAs){
+        if(myStatus){ showToast("To cancel, exit view-as.","error"); return; }
+        await adminAction({action:"register_event", targetUserId:user.id, eventId:evId});
+        showToast("Registered on behalf — awaiting host approval ✓"); load(); return;
+      }
+      if(myStatus){ await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",user.id); showToast("Registration cancelled"); }
+      else { await supabase.from("event_attendees").insert({event_id:evId,user_id:user.id,status:"pending"}); showToast("Registration sent — awaiting host approval ✓"); }
+      load();
+    } catch(e){showToast(e.message,"error");}
   }
 
   async function respondToAttendee(evId, userId, status) {
-    if(status==="approved"){ await supabase.from("event_attendees").update({status:"approved"}).eq("event_id",evId).eq("user_id",userId); showToast("Attendee approved ✓"); }
-    else { await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",userId); showToast("Registration declined"); }
-    load();
+    try {
+      if(isViewAs){
+        await adminAction({action:"respond_registration", targetUserId:user.id, eventId:evId, attendeeId:userId, status});
+        showToast(status==="approved"?"Attendee approved (on behalf) ✓":"Registration declined"); load(); return;
+      }
+      if(status==="approved"){ await supabase.from("event_attendees").update({status:"approved"}).eq("event_id",evId).eq("user_id",userId); showToast("Attendee approved ✓"); }
+      else { await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",userId); showToast("Registration declined"); }
+      load();
+    } catch(e){showToast(e.message,"error");}
   }
 
   async function toggleAttended(evId, userId, cur) {
@@ -1918,10 +1954,16 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
   });
 
   async function requestJoin(p, role) {
-    if(isViewAs){showToast("You're viewing as this user. Join/partnership requests can only be sent from your own account — tap Exit at the top first.","error");return;}
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     try {
+      if(isViewAs){
+        await adminAction({action:"join_project", targetUserId:user.id, projectId:p.id, ownerId:p.owner_id, roleApplied:role});
+        showToast(`Join request sent to ${p.project_name} (on behalf) ✓`); setRoleModal(null);
+        const {data:reqs} = await supabase.from("project_requests").select("*").eq("from_user_id",user.id);
+        const m={}; (reqs||[]).forEach(r=>{ m[r.project_id]=r; }); setMyRequests(m);
+        return;
+      }
       const {data,error}=await supabase.from("project_requests").insert({from_user_id:user.id,project_id:p.id,owner_id:p.owner_id,role_applied:role}).select().single();
       if(error) throw error;
       setMyRequests(m=>({...m,[p.id]:data}));
