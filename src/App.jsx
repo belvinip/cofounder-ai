@@ -602,6 +602,16 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
   const avRef = useRef();
   const [localAvatar, setLocalAvatar] = useState(p.avatar_url);
 
+  async function reportUser() {
+    const reason = prompt("Report this profile — briefly, what's the issue? (spam, fake, inappropriate, etc.)");
+    if(!reason) return;
+    try {
+      const {error}=await supabase.from("reports").insert({reporter_id:user.id, reported_id:p.id, reason});
+      if(error) throw error;
+      showToast("Report submitted — our team will review it. Thank you.");
+    } catch(e){ showToast("Couldn't submit report: "+e.message,"error"); }
+  }
+
   async function saveAdminEdit() {
     setSavingEdit(true);
     try {
@@ -770,6 +780,13 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
             </div>
           ) : (
             <PrimaryBtn onClick={()=>{onRequest(p);onClose();}} className="w-full">🤝 Send Partnership Request</PrimaryBtn>
+          )}
+
+          {/* Report (real profiles, not self, not demo) */}
+          {user&&!isDemo&&p.id!==user.id&&(
+            <button onClick={reportUser} className="w-full text-center text-white/25 hover:text-red-400/70 text-xs transition-colors py-1">
+              ⚐ Report this profile
+            </button>
           )}
 
           {/* Safe bottom padding */}
@@ -2191,6 +2208,31 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         className="w-full -mt-2 py-2 text-white/40 hover:text-white/70 text-xs transition-colors">
         🔗 Copy my card link
       </button>
+
+      {/* Profile completeness meter */}
+      {(()=>{
+        const checks=[
+          ["Photo",!!profile?.avatar_url],["Name",!!form.name],["Role",!!form.role],
+          ["Location",!!form.location],["Bio",!!form.bio],["Skills",(form.skills||[]).length>0],
+          ["Contact",!!form.mobile||!!form.whatsapp],["A project",false],
+        ];
+        const done=checks.filter(c=>c[1]).length;
+        const pct=Math.round((done/checks.length)*100);
+        const missing=checks.filter(c=>!c[1]).map(c=>c[0]);
+        if(pct>=100) return null;
+        return (
+          <Card className="p-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-white font-semibold text-sm">Profile {pct}% complete</span>
+              <span className="text-white/35 text-xs">{done}/{checks.length}</span>
+            </div>
+            <div className="h-2 rounded-full mb-3" style={{background:"rgba(255,255,255,0.07)"}}>
+              <motion.div className="h-full rounded-full" style={{background:"linear-gradient(90deg,#7c6fe0,#a78bfa)",width:`${pct}%`}} animate={{width:`${pct}%`}}/>
+            </div>
+            {missing.length>0&&<p className="text-white/45 text-xs">A complete profile ranks higher in Match and gets more responses. Still to add: <span className="text-purple-300">{missing.join(", ")}</span></p>}
+          </Card>
+        );
+      })()}
 
       {/* Section tabs */}
       <div className="flex gap-2">
