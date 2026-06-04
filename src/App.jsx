@@ -862,7 +862,26 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
     if(p.whatsapp) s+=4;
     return s;
   }
-  const sortedReal = [...realBrowse].sort((a,b)=>completeness(b)-completeness(a));
+  // Relevance boost: surface complementary co-founders for the current user
+  function isTechnical(role){ return /cto|engineer|developer|technical|dev|architect/i.test(role||""); }
+  function isBusiness(role){ return /ceo|business|marketing|sales|cmo|cfo|coo|growth|commercial|founder/i.test(role||""); }
+  function relevance(p){
+    let s=0;
+    const myRole=profile?.role||"";
+    // Complementary roles attract (technical <-> business)
+    if(isTechnical(myRole)&&isBusiness(p.role)) s+=40;
+    if(isBusiness(myRole)&&isTechnical(p.role)) s+=40;
+    // Shared industry
+    if(profile?.project_industry&&p.project_industry===profile.project_industry) s+=25;
+    // They're looking for someone like me (role match against their roles_needed)
+    if((p.roles_needed||[]).some(r=>myRole&&r.toLowerCase().includes(myRole.split(" ")[0]?.toLowerCase()||"___"))) s+=20;
+    // Shared location (same state)
+    const myState=(profile?.location||"").split(",")[1]?.trim();
+    const theirState=(p.location||"").split(",")[1]?.trim();
+    if(myState&&myState===theirState) s+=10;
+    return s;
+  }
+  const sortedReal = [...realBrowse].sort((a,b)=>(relevance(b)+completeness(b))-(relevance(a)+completeness(a)));
   const realNames = new Set(realBrowse.map(p=>(p.name||"").toLowerCase()));
   const demoBrowse = DEMO_PROFILES.filter(d=>!realNames.has((d.name||"").toLowerCase()));
   // Real approved profiles always show first (sorted by completeness), demos after
@@ -2447,11 +2466,46 @@ function ManageTab({ showToast, onViewAs }) {
         </motion.div>
       );})}</div>
 
+      {/* User reports */}
+      <ReportsPanel showToast={showToast}/>
+
       {/* SQL fix reminder */}
       <Card className="p-4">
         <div className="text-white/40 text-xs">If approvals aren't saving, run the admin RLS fix SQL in Supabase (see instructions).</div>
       </Card>
     </motion.div>
+  );
+}
+
+function ReportsPanel({ showToast }) {
+  const [reports,setReports]=useState([]);
+  const [loaded,setLoaded]=useState(false);
+  async function load(){
+    try {
+      const {data}=await supabase.from("reports")
+        .select("*, reporter:profiles!reports_reporter_id_fkey(name), reported:profiles!reports_reported_id_fkey(name)")
+        .order("created_at",{ascending:false});
+      setReports(data||[]);
+    } catch(e){ setReports([]); }
+    setLoaded(true);
+  }
+  useEffect(()=>{ load(); },[]);
+  async function dismiss(id){
+    await supabase.from("reports").delete().eq("id",id);
+    showToast("Report dismissed"); load();
+  }
+  if(!loaded||reports.length===0) return null;
+  return (
+    <Card className="p-4 space-y-3" style={{border:"1px solid rgba(239,68,68,0.25)"}}>
+      <div className="text-red-400 font-semibold text-sm">⚐ User Reports ({reports.length})</div>
+      {reports.map(r=>(
+        <div key={r.id} className="p-3 rounded-2xl text-sm" style={{background:"rgba(239,68,68,0.06)",border:`1px solid ${BORDER}`}}>
+          <div className="text-white"><strong>{r.reported?.name||"Unknown"}</strong> reported by {r.reporter?.name||"someone"}</div>
+          <div className="text-white/55 text-xs mt-1">"{r.reason}"</div>
+          <button onClick={()=>dismiss(r.id)} className="text-white/40 hover:text-white/70 text-xs mt-2">✕ Dismiss</button>
+        </div>
+      ))}
+    </Card>
   );
 }
 
