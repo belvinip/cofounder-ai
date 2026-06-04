@@ -78,7 +78,7 @@ const DEMO_PROFILES = [
 
 // ─── 30 Demo Events ───────────────────────────────────────────────────────────
 const _now = new Date();
-const fd = (days,h=10,m=0) => { const d=new Date(_now); d.setDate(d.getDate()-days-1); d.setHours(h,m,0,0); return d.toISOString(); };
+const fd = (days,h=10,m=0) => { const d=new Date(_now); d.setDate(d.getDate()-(days*11)-7); d.setHours(h,m,0,0); return d.toISOString(); };
 const pd = (days,h=18,m=0) => { const d=new Date(_now); d.setDate(d.getDate()-days); d.setHours(h,m,0,0); return d.toISOString(); };
 
 const DEMO_EVENTS = [
@@ -1136,9 +1136,10 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
   async function load() {
     try {
       const {data:evs,error}=await supabase.from("events").select("*, creator:profiles(name,id)").order("event_date");
-      if(error||!evs||evs.length===0){ setEvents(DEMO_EVENTS); }
-      else {
-        setEvents(evs);
+      // Always include demo events (they show as past events) alongside any real events
+      const realEvents = (error||!evs) ? [] : evs;
+      setEvents([...realEvents, ...DEMO_EVENTS]);
+      if(realEvents.length>0){
         // Load all attendees with their profile info + status
         const {data:att}=await supabase.from("event_attendees")
           .select("event_id, user_id, status, attended, profile:profiles(id,name,email,mobile,avatar_url,role,location)");
