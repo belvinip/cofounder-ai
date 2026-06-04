@@ -2795,6 +2795,40 @@ export default function App() {
 
   const showToast=useCallback((msg,type="success")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3200); },[]);
 
+  // Load notification counts (pending requests + unread messages) and poll.
+  // Placed BEFORE any early return so hook order stays stable.
+  useEffect(()=>{
+    const uid=session?.user?.id;
+    if(!uid){ setNotif({partner:0,project:0,events:0,messages:0}); return; }
+    let cancelled=false;
+    async function myMatchIds(){
+      try { const {data}=await supabase.from("match_requests").select("id").eq("status","accepted").or(`from_user_id.eq.${uid},to_user_id.eq.${uid}`); return (data||[]).map(r=>r.id); }
+      catch(e){ return []; }
+    }
+    async function loadNotif(){
+      try {
+        const {data:pr}=await supabase.from("match_requests").select("id").eq("to_user_id",uid).eq("status","pending");
+        const {data:jr}=await supabase.from("project_requests").select("id").eq("owner_id",uid).eq("status","pending");
+        const {data:myEv}=await supabase.from("events").select("id").eq("creator_id",uid);
+        let evCount=0;
+        if(myEv&&myEv.length){
+          const {data:pend}=await supabase.from("event_attendees").select("event_id").in("event_id",myEv.map(e=>e.id)).eq("status","pending");
+          evCount=(pend||[]).length;
+        }
+        const matchIds=await myMatchIds();
+        let unreadCount=0;
+        if(matchIds.length){
+          const {data:unread}=await supabase.from("messages").select("id").neq("sender_id",uid).is("read_at",null).in("match_id",matchIds);
+          unreadCount=(unread||[]).length;
+        }
+        if(!cancelled) setNotif({partner:(pr||[]).length, project:(jr||[]).length, events:evCount, messages:unreadCount});
+      } catch(e){}
+    }
+    loadNotif();
+    const iv=setInterval(loadNotif,8000);
+    return ()=>{ cancelled=true; clearInterval(iv); };
+  },[session]);
+
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{ setSession(session); if(session) loadProfile(session.user); });
     const{data:{subscription}}=supabase.auth.onAuthStateChange((_,s)=>{ setSession(s); if(s) loadProfile(s.user); else{setProfile(null);} });
@@ -2862,45 +2896,6 @@ export default function App() {
   const setEffectiveProfile = viewAs ? (updater)=>setViewAs(prev=>typeof updater==="function"?updater(prev):updater) : setProfile;
 
   function exitViewAs(){ setViewAs(null); setTab("manage"); showToast("Returned to your admin account"); }
-
-  // Load notification counts (pending requests + unread messages) and poll
-  useEffect(()=>{
-    if(!realUser){ setNotif({partner:0,project:0,events:0,messages:0}); return; }
-    let cancelled=false;
-    async function loadNotif(){
-      try {
-        // Incoming partner requests awaiting my response
-        const {data:pr}=await supabase.from("match_requests").select("id").eq("to_user_id",realUser.id).eq("status","pending");
-        // Incoming project join requests on projects I own
-        const {data:jr}=await supabase.from("project_requests").select("id").eq("owner_id",realUser.id).eq("status","pending");
-        // Pending event registrations on events I host
-        const {data:myEv}=await supabase.from("events").select("id").eq("creator_id",realUser.id);
-        let evCount=0;
-        if(myEv&&myEv.length){
-          const {data:pend}=await supabase.from("event_attendees").select("event_id").in("event_id",myEv.map(e=>e.id)).eq("status","pending");
-          evCount=(pend||[]).length;
-        }
-        // Unread messages sent to me (across my accepted conversations)
-        const matchIds=await myMatchIds(realUser.id);
-        let unreadCount=0;
-        if(matchIds.length){
-          const {data:unread}=await supabase.from("messages").select("id").neq("sender_id",realUser.id).is("read_at",null).in("match_id",matchIds);
-          unreadCount=(unread||[]).length;
-        }
-        if(!cancelled) setNotif({partner:(pr||[]).length, project:(jr||[]).length, events:evCount, messages:unreadCount});
-      } catch(e){}
-    }
-    loadNotif();
-    const iv=setInterval(loadNotif,8000);
-    return ()=>{ cancelled=true; clearInterval(iv); };
-  },[realUser]);
-
-  async function myMatchIds(uid){
-    try {
-      const {data}=await supabase.from("match_requests").select("id").eq("status","accepted").or(`from_user_id.eq.${uid},to_user_id.eq.${uid}`);
-      return (data||[]).map(r=>r.id);
-    } catch(e){ return []; }
-  }
 
   // Nav icons matching the reference image
   const NAV = [
