@@ -409,9 +409,13 @@ function ChatModal({ matchId, other, me, myProfile, onClose }) {
     supabase.from("messages").select("*, sender:profiles(name,avatar_url)").eq("match_id",matchId).order("created_at")
       .then(({data})=>{ if(data) setMsgs(data); if(first) setLoading(false); }).catch(()=>first&&setLoading(false));
   }
+  async function markRead(){
+    try { await supabase.from("messages").update({read_at:new Date().toISOString()}).eq("match_id",matchId).neq("sender_id",me.id).is("read_at",null); } catch(e){}
+  }
   useEffect(()=>{
     fetchMsgs(true);
-    const iv=setInterval(()=>fetchMsgs(false),3000);
+    markRead();
+    const iv=setInterval(()=>{ fetchMsgs(false); markRead(); },3000);
     inputRef.current?.focus();
     return ()=>clearInterval(iv);
   },[matchId]);
@@ -2687,6 +2691,7 @@ export default function App() {
   const [session,setSession]=useState(undefined);
   const [profile,setProfile]=useState(null);
   const [tab,setTab]=useState("events");
+  const [notif,setNotif]=useState({partner:0,project:0,events:0,messages:0});
   const [toast,setToast]=useState(null);
   const [showOnboard,setShowOnboard]=useState(false);
   const [showLogin,setShowLogin]=useState(false);
@@ -2762,6 +2767,45 @@ export default function App() {
 
   function exitViewAs(){ setViewAs(null); setTab("manage"); showToast("Returned to your admin account"); }
 
+  // Load notification counts (pending requests + unread messages) and poll
+  useEffect(()=>{
+    if(!realUser){ setNotif({partner:0,project:0,events:0,messages:0}); return; }
+    let cancelled=false;
+    async function loadNotif(){
+      try {
+        // Incoming partner requests awaiting my response
+        const {data:pr}=await supabase.from("match_requests").select("id").eq("to_user_id",realUser.id).eq("status","pending");
+        // Incoming project join requests on projects I own
+        const {data:jr}=await supabase.from("project_requests").select("id").eq("owner_id",realUser.id).eq("status","pending");
+        // Pending event registrations on events I host
+        const {data:myEv}=await supabase.from("events").select("id").eq("creator_id",realUser.id);
+        let evCount=0;
+        if(myEv&&myEv.length){
+          const {data:pend}=await supabase.from("event_attendees").select("event_id").in("event_id",myEv.map(e=>e.id)).eq("status","pending");
+          evCount=(pend||[]).length;
+        }
+        // Unread messages sent to me (across my accepted conversations)
+        const matchIds=await myMatchIds(realUser.id);
+        let unreadCount=0;
+        if(matchIds.length){
+          const {data:unread}=await supabase.from("messages").select("id").neq("sender_id",realUser.id).is("read_at",null).in("match_id",matchIds);
+          unreadCount=(unread||[]).length;
+        }
+        if(!cancelled) setNotif({partner:(pr||[]).length, project:(jr||[]).length, events:evCount, messages:unreadCount});
+      } catch(e){}
+    }
+    loadNotif();
+    const iv=setInterval(loadNotif,8000);
+    return ()=>{ cancelled=true; clearInterval(iv); };
+  },[realUser]);
+
+  async function myMatchIds(uid){
+    try {
+      const {data}=await supabase.from("match_requests").select("id").eq("status","accepted").or(`from_user_id.eq.${uid},to_user_id.eq.${uid}`);
+      return (data||[]).map(r=>r.id);
+    } catch(e){ return []; }
+  }
+
   // Nav icons matching the reference image
   const NAV = [
     { id:"events",  label:"Events",  icon:(active)=>(
@@ -2783,6 +2827,15 @@ export default function App() {
 
   function goTab(id,auth){ if(auth&&!user){setShowLogin(true);return;} setTab(id); }
 
+  // Badge count per tab
+  const badgeFor=(id)=>{
+    if(viewAs) return 0;
+    if(id==="matching") return notif.partner+notif.messages;
+    if(id==="projects") return notif.project;
+    if(id==="events") return notif.events;
+    return 0;
+  };
+
   // Sign-in screen if not logged in and trying to access auth tab
   const needsAuth = NAV.find(n=>n.id===tab)?.auth && !user;
 
@@ -2802,6 +2855,7 @@ export default function App() {
               className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-semibold transition-all"
               style={active?{background:"linear-gradient(135deg,rgba(124,111,224,0.2),rgba(167,139,250,0.12))",color:"#a78bfa",border:"1px solid rgba(124,111,224,0.35)"}:{color:"rgba(255,255,255,0.45)",border:"1px solid transparent"}}>
               <span style={{color:active?"#a78bfa":"rgba(255,255,255,0.35)"}}>{n.icon(active)}</span>{n.label}
+              {badgeFor(n.id)>0&&<span className="min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{background:"#ef4444"}}>{badgeFor(n.id)>9?"9+":badgeFor(n.id)}</span>}
             </button>
           );})}
         </nav>
@@ -2862,10 +2916,14 @@ export default function App() {
         <div className="flex items-center justify-around px-2 py-3">
           {NAV.map(n=>{
             const active=tab===n.id;
+            const badge=badgeFor(n.id);
             return (
               <button key={n.id} onClick={()=>goTab(n.id,n.auth)}
-                className="flex flex-col items-center gap-1 px-4 py-1 rounded-2xl transition-all min-w-[56px]">
-                <span style={{color:active?"#a78bfa":"rgba(255,255,255,0.35)"}}>{n.icon(active)}</span>
+                className="flex flex-col items-center gap-1 px-4 py-1 rounded-2xl transition-all min-w-[56px] relative">
+                <span className="relative" style={{color:active?"#a78bfa":"rgba(255,255,255,0.35)"}}>
+                  {n.icon(active)}
+                  {badge>0&&<span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{background:"#ef4444"}}>{badge>9?"9+":badge}</span>}
+                </span>
                 <span className="text-[10px] font-semibold" style={{color:active?"#a78bfa":"rgba(255,255,255,0.35)"}}>{n.label}</span>
               </button>
             );
