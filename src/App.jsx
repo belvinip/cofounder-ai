@@ -26,6 +26,20 @@ async function adminAction(payload) {
 }
 
 const ADMIN_EMAIL = "belvinip@gmail.com";
+
+// Fire-and-forget transactional email via the send-email Edge Function.
+// Never blocks the UI; silently no-ops if the function isn't deployed yet.
+async function sendEmail(type, to, data={}) {
+  if(!to) return;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    await fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
+      method: "POST",
+      headers: { "Content-Type":"application/json", "Authorization":`Bearer ${session?.access_token||SUPABASE_ANON}`, "apikey":SUPABASE_ANON },
+      body: JSON.stringify({ type, to, data }),
+    });
+  } catch(e){ /* email is best-effort; never break the action */ }
+}
 const INDUSTRIES = ["FinTech","HealthTech","EdTech","Climate","Web3","E-commerce","SaaS","Consumer","DeepTech","Other"];
 const PARTNER_ROLES = ["Business Partner","Co-Founder","Technical Partner","Marketing Partner","Operations Partner","Sales Partner","Investor","Advisor","Mentor","Contractor","Employee"];
 const AU_STATES = ["VIC","NSW","QLD","WA","SA","TAS","ACT","NT"];
@@ -919,6 +933,7 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
       if(error) throw error;
       setMatchMap(m=>({...m,[p.id]:data}));
       showToast(`Partnership request sent to ${p.name} ✓`);
+      if(p.email) sendEmail("partner_request", p.email, { fromName: profile?.name||"A founder" });
       loadRequests();
     } catch(e){showToast(e.message||"Error","error");}
   }
@@ -2009,6 +2024,7 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
       if(error) throw error;
       setMyRequests(m=>({...m,[p.id]:data}));
       showToast(`Request sent to join ${p.project_name} ✓`);
+      if(p.owner?.email) sendEmail("join_request", p.owner.email, { fromName: profile?.name||"A member", projectName: p.project_name, role });
       setRoleModal(null);
     } catch(e){showToast(e.message||"Error","error");}
   }
@@ -2842,6 +2858,7 @@ export default function App() {
       isNew=true;
       const{data:created}=await supabase.from("profiles").upsert({id:u.id,email:u.email,name:u.user_metadata?.full_name||u.email?.split("@")[0],avatar_url:u.user_metadata?.avatar_url,is_admin:u.email===ADMIN_EMAIL,is_approved:u.email===ADMIN_EMAIL}).select().single();
       data=created;
+      sendEmail("welcome", u.email, { name: data?.name });
     }
     if(u.email===ADMIN_EMAIL&&!data?.is_admin){ await supabase.from("profiles").update({is_admin:true,is_approved:true}).eq("id",u.id); data={...data,is_admin:true,is_approved:true}; }
     setProfile(data);
