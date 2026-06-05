@@ -40,6 +40,11 @@ function buildEmail(type: string, data: any): { subject: string; html: string } 
         html: wrap(`Welcome, ${data.name || "there"}!`,
           `You've joined the ABAA founder community — where founders find co-founders, partners, and collaborators.<br><br>Complete your profile to start matching and unlock your free digital business card.`,
           cta("Complete your profile", "")) };
+    case "signin":
+      return { subject: "New sign-in to your ABAA account",
+        html: wrap(`Welcome back, ${data.name || "there"}`,
+          `You just signed in to ABAA Community. If this was you, no action is needed.<br><br>If you don't recognise this sign-in, please review your account security.`,
+          cta("Open ABAA", "")) };
     case "event_created":
       return { subject: "Your event was submitted ✓",
         html: wrap("Event submitted for review",

@@ -417,6 +417,7 @@ function ChatModal({ matchId, other, me, myProfile, onClose }) {
   const bottomRef = useRef();
   const inputRef = useRef();
   const fileRef = useRef();
+  const emailedRef = useRef(false);
   const oc = pal(other?.id);
 
   function fetchMsgs(first){
@@ -440,6 +441,11 @@ function ChatModal({ matchId, other, me, myProfile, onClose }) {
     try {
       const {data}=await supabase.from("messages").insert(msg).select("*, sender:profiles(name,avatar_url)").single();
       if(data) setMsgs(m=>[...m,data]);
+      // Notify recipient by email — once per open chat session to avoid spam
+      if(!emailedRef.current && other?.email){
+        emailedRef.current=true;
+        sendEmail("new_message", other.email, { fromName: myProfile?.name||me?.user_metadata?.full_name||"Someone" });
+      }
     } catch(e){}
   }
 
@@ -840,6 +846,16 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
     const {error}=await supabase.from("match_requests").update({status}).eq("id",reqId);
     if(error){showToast(error.message,"error");return;}
     showToast(status==="accepted"?"Match accepted! You can now chat ✓":"Request declined");
+    if(status==="accepted"){
+      // Notify the original requester that they were accepted
+      const req=incomingReqs.find(r=>r.id===reqId);
+      const senderId=req?.from_user_id;
+      if(senderId){
+        try { const {data:sender}=await supabase.from("profiles").select("email").eq("id",senderId).maybeSingle();
+          if(sender?.email) sendEmail("partner_accepted", sender.email, { byName: profile?.name||"Your match" });
+        } catch(e){}
+      }
+    }
     loadRequests();
   }
 
@@ -1169,7 +1185,7 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
 // ════════════════════════════════════════════════════════
 // EVENTS TAB
 // ════════════════════════════════════════════════════════
-function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs }) {
+function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs }) {
   const [events, setEvents] = useState([]);
   const [attSet, setAttSet] = useState({});
   const [pendingAtt, setPendingAtt] = useState({});
@@ -1260,6 +1276,7 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
       } else {
         await supabase.from("events").insert({...payload,creator_id:user.id,is_approved: isAdmin?true:false});
         showToast(isAdmin?"Event created ✓":"Event submitted — awaiting admin approval ✓");
+        if(!isAdmin && user.email) sendEmail("event_created", user.email, { title: payload.title });
       }
       setShowForm(false); setEditingId(null);
       setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
@@ -1287,7 +1304,18 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
         showToast("Registered on behalf — awaiting host approval ✓"); load(); return;
       }
       if(myStatus){ await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",user.id); showToast("Registration cancelled"); }
-      else { await supabase.from("event_attendees").insert({event_id:evId,user_id:user.id,status:"pending"}); showToast("Registration sent — awaiting host approval ✓"); }
+      else {
+        await supabase.from("event_attendees").insert({event_id:evId,user_id:user.id,status:"pending"}); showToast("Registration sent — awaiting host approval ✓");
+        const ev=events.find(e=>e.id===evId);
+        // Confirm to the registrant
+        if(user.email) sendEmail("event_register", user.email, { title: ev?.title });
+        // Notify the host of a new registration
+        if(ev?.creator_id){
+          try { const {data:host}=await supabase.from("profiles").select("email").eq("id",ev.creator_id).maybeSingle();
+            if(host?.email) sendEmail("new_registration", host.email, { title: ev?.title, attendeeName: profile?.name||"A member" });
+          } catch(e){}
+        }
+      }
       load();
     } catch(e){showToast(e.message,"error");}
   }
@@ -1298,7 +1326,13 @@ function EventsTab({ user, isApproved, showToast, requireAuth, isAdmin, isViewAs
         await adminAction({action:"respond_registration", targetUserId:user.id, eventId:evId, attendeeId:userId, status});
         showToast(status==="approved"?"Attendee approved (on behalf) ✓":"Registration declined"); load(); return;
       }
-      if(status==="approved"){ await supabase.from("event_attendees").update({status:"approved"}).eq("event_id",evId).eq("user_id",userId); showToast("Attendee approved ✓"); }
+      if(status==="approved"){
+        await supabase.from("event_attendees").update({status:"approved"}).eq("event_id",evId).eq("user_id",userId); showToast("Attendee approved ✓");
+        const ev=events.find(e=>e.id===evId);
+        try { const {data:att}=await supabase.from("profiles").select("email").eq("id",userId).maybeSingle();
+          if(att?.email) sendEmail("event_approved", att.email, { title: ev?.title });
+        } catch(e){}
+      }
       else { await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",userId); showToast("Registration declined"); }
       load();
     } catch(e){showToast(e.message,"error");}
@@ -1913,6 +1947,10 @@ function ProjectJoinRequests({ user, showToast }) {
     const {error}=await supabase.from("project_requests").update({status}).eq("id",id);
     if(error){showToast(error.message,"error");return;}
     showToast(status==="accepted"?"Accepted! Contact details now shared ✓":"Request declined");
+    if(status==="accepted"){
+      const req=requests.find(r=>r.id===id);
+      if(req?.sender?.email) sendEmail("join_accepted", req.sender.email, { projectName: req.project?.project_name||"the project" });
+    }
     load();
   }
 
@@ -2864,6 +2902,14 @@ export default function App() {
       sendEmail("welcome", u.email, { name: data?.name });
       await supabase.from("profiles").update({welcomed:true}).eq("id",u.id);
       data={...data,welcomed:true};
+    } else if(data){
+      // Sign-in notification, capped to once per day to protect deliverability
+      const today=new Date().toISOString().slice(0,10);
+      if(data.last_signin_email!==today){
+        sendEmail("signin", u.email, { name: data?.name });
+        await supabase.from("profiles").update({last_signin_email:today}).eq("id",u.id);
+        data={...data,last_signin_email:today};
+      }
     }
     if(u.email===ADMIN_EMAIL&&!data?.is_admin){ await supabase.from("profiles").update({is_admin:true,is_approved:true}).eq("id",u.id); data={...data,is_admin:true,is_approved:true}; }
     setProfile(data);
@@ -3016,7 +3062,7 @@ export default function App() {
               </PrimaryBtn>
             </motion.div>
           ):tab==="matching"?<MatchTab key="m" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
-          :tab==="events"?<EventsTab key="e" user={user} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
+          :tab==="events"?<EventsTab key="e" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
           :tab==="projects"?<ProjectsTab key="pr" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
           :tab==="profile"?<ProfileTab key="p" user={user} profile={effectiveProfile} setProfile={setEffectiveProfile} showToast={showToast} isApproved={isApproved}/>
           :tab==="manage"&&realIsAdmin&&!viewAs?<ManageTab key="a" showToast={showToast} onViewAs={(u)=>{setViewAs(u);setTab("profile");showToast(`Now viewing as ${u.name||u.email}`);}}/>
