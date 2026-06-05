@@ -2852,13 +2852,18 @@ export default function App() {
   },[]);
 
   async function loadProfile(u) {
-    let{data}=await supabase.from("profiles").select("*").eq("id",u.id).single();
+    let{data}=await supabase.from("profiles").select("*").eq("id",u.id).maybeSingle();
     let isNew=false;
     if(!data){
       isNew=true;
       const{data:created}=await supabase.from("profiles").upsert({id:u.id,email:u.email,name:u.user_metadata?.full_name||u.email?.split("@")[0],avatar_url:u.user_metadata?.avatar_url,is_admin:u.email===ADMIN_EMAIL,is_approved:u.email===ADMIN_EMAIL}).select().single();
       data=created;
+    }
+    // Send welcome email once per user (covers profiles auto-created by the DB trigger too)
+    if(data && !data.welcomed){
       sendEmail("welcome", u.email, { name: data?.name });
+      await supabase.from("profiles").update({welcomed:true}).eq("id",u.id);
+      data={...data,welcomed:true};
     }
     if(u.email===ADMIN_EMAIL&&!data?.is_admin){ await supabase.from("profiles").update({is_admin:true,is_approved:true}).eq("id",u.id); data={...data,is_admin:true,is_approved:true}; }
     setProfile(data);
