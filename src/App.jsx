@@ -1822,6 +1822,7 @@ function MyProjects({ user, isAdmin, showToast }) {
       if(editing==="new"){
         const {error}=await supabase.from("projects").insert(payload); if(error) throw error;
         showToast("Project created ✓");
+        if(user?.email) sendEmail("project_created", user.email, { projectName: f.project_name });
       } else {
         const {error}=await supabase.from("projects").update(payload).eq("id",editing); if(error) throw error;
         showToast("Project updated ✓");
@@ -2842,6 +2843,7 @@ export default function App() {
   const [profile,setProfile]=useState(null);
   const [tab,setTab]=useState("events");
   const [notif,setNotif]=useState({partner:0,project:0,events:0,messages:0});
+  const processedUserRef = useRef(null);
   const [toast,setToast]=useState(null);
   const [showOnboard,setShowOnboard]=useState(false);
   const [showLogin,setShowLogin]=useState(false);
@@ -2885,11 +2887,20 @@ export default function App() {
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{ setSession(session); if(session) loadProfile(session.user); });
-    const{data:{subscription}}=supabase.auth.onAuthStateChange((_,s)=>{ setSession(s); if(s) loadProfile(s.user); else{setProfile(null);} });
+    const{data:{subscription}}=supabase.auth.onAuthStateChange((event,s)=>{
+      setSession(s);
+      if(s){
+        // Only treat SIGNED_IN / INITIAL_SESSION as a real login; ignore TOKEN_REFRESHED etc.
+        const isFreshLogin = event==="SIGNED_IN" || event==="INITIAL_SESSION";
+        loadProfile(s.user, isFreshLogin);
+      } else { setProfile(null); processedUserRef.current=null; }
+    });
     return()=>subscription.unsubscribe();
   },[]);
 
-  async function loadProfile(u) {
+  async function loadProfile(u, isFreshLogin=false) {
+    // Guard: only run the full load + email logic once per user per page session
+    const alreadyProcessed = processedUserRef.current===u.id;
     let{data}=await supabase.from("profiles").select("*").eq("id",u.id).maybeSingle();
     let isNew=false;
     if(!data){
@@ -2897,23 +2908,16 @@ export default function App() {
       const{data:created}=await supabase.from("profiles").upsert({id:u.id,email:u.email,name:u.user_metadata?.full_name||u.email?.split("@")[0],avatar_url:u.user_metadata?.avatar_url,is_admin:u.email===ADMIN_EMAIL,is_approved:u.email===ADMIN_EMAIL}).select().single();
       data=created;
     }
-    // Send welcome email once per user (covers profiles auto-created by the DB trigger too)
-    if(data && !data.welcomed){
-      sendEmail("welcome", u.email, { name: data?.name });
+    // Welcome email — only once ever (welcomed flag), and only when not already processed this session
+    if(data && !data.welcomed && !alreadyProcessed){
+      // Mark welcomed FIRST to prevent any race / repeat, then send
       await supabase.from("profiles").update({welcomed:true}).eq("id",u.id);
       data={...data,welcomed:true};
-    } else if(data){
-      // Sign-in notification, capped to once per day to protect deliverability
-      const today=new Date().toISOString().slice(0,10);
-      if(data.last_signin_email!==today){
-        sendEmail("signin", u.email, { name: data?.name });
-        await supabase.from("profiles").update({last_signin_email:today}).eq("id",u.id);
-        data={...data,last_signin_email:today};
-      }
+      sendEmail("welcome", u.email, { name: data?.name });
     }
+    processedUserRef.current=u.id;
     if(u.email===ADMIN_EMAIL&&!data?.is_admin){ await supabase.from("profiles").update({is_admin:true,is_approved:true}).eq("id",u.id); data={...data,is_admin:true,is_approved:true}; }
     setProfile(data);
-    // Show onboarding for new users OR users who haven't filled in their background
     if((isNew || !data?.role || !data?.bio || !(data?.skills?.length)) && u.email!==ADMIN_EMAIL){
       setShowOnboard(true);
     }

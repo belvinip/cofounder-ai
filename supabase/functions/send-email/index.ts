@@ -50,6 +50,11 @@ function buildEmail(type: string, data: any): { subject: string; html: string } 
         html: wrap("Event submitted for review",
           `Your event <strong>${data.title || ""}</strong> has been submitted. An admin will review and approve it shortly, then it'll be visible to the whole community.`,
           cta("View events", "")) };
+    case "project_created":
+      return { subject: "Your project is live ✓",
+        html: wrap("Project created",
+          `Your project <strong>${data.projectName || ""}</strong> is now live in the community. Founders can discover it and request to join.`,
+          cta("View your projects", "")) };
     case "event_register":
       return { subject: "Registration received ⏳",
         html: wrap("You're on the list — pending approval",
