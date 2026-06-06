@@ -2998,13 +2998,18 @@ export default function App() {
     }
     async function loadNotif(){
       try {
-        const {data:pr}=await supabase.from("match_requests").select("id").eq("to_user_id",uid).eq("status","pending");
-        const {data:jr}=await supabase.from("project_requests").select("id").eq("owner_id",uid).eq("status","pending");
+        // Incoming partner requests awaiting MY response (not ones I sent to myself)
+        const {data:pr}=await supabase.from("match_requests").select("id,from_user_id").eq("to_user_id",uid).eq("status","pending");
+        const partnerCount=(pr||[]).filter(r=>r.from_user_id!==uid).length;
+        // Join requests on MY projects, from someone other than me
+        const {data:jr}=await supabase.from("project_requests").select("id,from_user_id").eq("owner_id",uid).eq("status","pending");
+        const projectCount=(jr||[]).filter(r=>r.from_user_id!==uid).length;
+        // Pending event registrations on events I host, from someone other than me
         const {data:myEv}=await supabase.from("events").select("id").eq("creator_id",uid);
         let evCount=0;
         if(myEv&&myEv.length){
-          const {data:pend}=await supabase.from("event_attendees").select("event_id").in("event_id",myEv.map(e=>e.id)).eq("status","pending");
-          evCount=(pend||[]).length;
+          const {data:pend}=await supabase.from("event_attendees").select("event_id,user_id").in("event_id",myEv.map(e=>e.id)).eq("status","pending");
+          evCount=(pend||[]).filter(a=>a.user_id!==uid).length;
         }
         const matchIds=await myMatchIds();
         let unreadCount=0;
@@ -3012,7 +3017,7 @@ export default function App() {
           const {data:unread}=await supabase.from("messages").select("id").neq("sender_id",uid).is("read_at",null).in("match_id",matchIds);
           unreadCount=(unread||[]).length;
         }
-        if(!cancelled) setNotif({partner:(pr||[]).length, project:(jr||[]).length, events:evCount, messages:unreadCount});
+        if(!cancelled) setNotif({partner:partnerCount, project:projectCount, events:evCount, messages:unreadCount});
       } catch(e){}
     }
     loadNotif();
