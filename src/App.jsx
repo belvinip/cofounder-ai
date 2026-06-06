@@ -409,6 +409,7 @@ function LoginModal({ onClose }) {
 }
 function ChatModal({ matchId, other, me, myProfile, onClose }) {
   const [msgs, setMsgs] = useState([]);
+  const [projectContext, setProjectContext] = useState(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -430,6 +431,8 @@ function ChatModal({ matchId, other, me, myProfile, onClose }) {
   useEffect(()=>{
     fetchMsgs(true);
     markRead();
+    supabase.from("match_requests").select("project_context").eq("id",matchId).maybeSingle()
+      .then(({data})=>setProjectContext(data?.project_context||null)).catch(()=>{});
     const iv=setInterval(()=>{ fetchMsgs(false); markRead(); },3000);
     inputRef.current?.focus();
     return ()=>clearInterval(iv);
@@ -521,7 +524,7 @@ function ChatModal({ matchId, other, me, myProfile, onClose }) {
         {/* Header */}
         <div className="flex-shrink-0 flex items-center gap-3 p-4 border-b" style={{borderColor:BORDER}}>
           <Av name={other?.name} url={other?.avatar_url} color={oc} size="sm" ring/>
-          <div className="flex-1 min-w-0"><div className="text-white font-bold truncate">{other?.name}</div><div className="text-emerald-400 text-xs">● Connected</div></div>
+          <div className="flex-1 min-w-0"><div className="text-white font-bold truncate">{other?.name}</div><div className="text-emerald-400 text-xs">● Connected{projectContext?` · ${projectContext}`:""}</div></div>
           <button onClick={shareContactCard} title="Share my contact card" className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa",border:"1px solid rgba(124,111,224,0.3)"}}>📇 Card</button>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">✕</button>
         </div>
@@ -1948,11 +1951,25 @@ function ProjectJoinRequests({ user, showToast }) {
   async function respond(id,status){
     const {error}=await supabase.from("project_requests").update({status}).eq("id",id);
     if(error){showToast(error.message,"error");return;}
-    showToast(status==="accepted"?"Accepted! Contact details now shared ✓":"Request declined");
+    const req=requests.find(r=>r.id===id);
     if(status==="accepted"){
-      const req=requests.find(r=>r.id===id);
+      // Open a chat between owner and requester (accepted match), tagged with the project
+      if(req){
+        try {
+          const projName=req.project?.project_name||"a project";
+          // Avoid duplicate: look for an existing match between these two
+          const {data:existing}=await supabase.from("match_requests").select("id")
+            .or(`and(from_user_id.eq.${req.from_user_id},to_user_id.eq.${user.id}),and(from_user_id.eq.${user.id},to_user_id.eq.${req.from_user_id})`).limit(1);
+          if(existing&&existing.length){
+            await supabase.from("match_requests").update({status:"accepted",project_context:projName}).eq("id",existing[0].id);
+          } else {
+            await supabase.from("match_requests").insert({from_user_id:req.from_user_id,to_user_id:user.id,status:"accepted",project_context:projName});
+          }
+        } catch(e){}
+      }
       if(req?.sender?.email) sendEmail("join_accepted", req.sender.email, { projectName: req.project?.project_name||"the project" });
-    }
+      showToast("Accepted! You're now connected — you can chat in the Match tab ✓");
+    } else showToast("Request declined");
     load();
   }
 
@@ -2226,15 +2243,16 @@ function CardContacts({ user }) {
 }
 
 function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
-  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:"",brand_color:"#7c6fe0"});
+  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:"",brand_color:"#7c6fe0",cover_url:"",businesses:[]});
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState("identity");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
   const avatarInputRef = useRef();
 
   useEffect(()=>{
-    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||"",headline:profile.headline||"",availability:profile.availability||"",project_stage:profile.project_stage||"",project_website:profile.project_website||"",team_size:profile.team_size||"",funding_status:profile.funding_status||"",brand_color:profile.brand_color||"#7c6fe0"});
+    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||"",headline:profile.headline||"",availability:profile.availability||"",project_stage:profile.project_stage||"",project_website:profile.project_website||"",team_size:profile.team_size||"",funding_status:profile.funding_status||"",brand_color:profile.brand_color||"#7c6fe0",cover_url:profile.cover_url||"",businesses:Array.isArray(profile.businesses)?profile.businesses:(profile.businesses?JSON.parse(profile.businesses):[])});
   },[profile]);
 
   const pitchScore=(()=>{let s=0;if(form.project_name?.length>3)s+=25;if(form.project_pitch?.length>20)s+=30;if(form.project_pitch?.length>80)s+=20;if(form.project_industry)s+=25;return Math.min(s,100);})();
@@ -2260,7 +2278,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         showToast("WhatsApp must be an Australian number starting with +61","error");
         setSaving(false); return;
       }
-      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,business_name:form.business_name,wechat:form.wechat,headline:form.headline,availability:form.availability,project_stage:form.project_stage,project_website:form.project_website,team_size:form.team_size,funding_status:form.funding_status,brand_color:form.brand_color,updated_at:new Date().toISOString()}).eq("id",user.id);
+      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,business_name:form.business_name,wechat:form.wechat,headline:form.headline,availability:form.availability,project_stage:form.project_stage,project_website:form.project_website,team_size:form.team_size,funding_status:form.funding_status,brand_color:form.brand_color,cover_url:form.cover_url,businesses:form.businesses,updated_at:new Date().toISOString()}).eq("id",user.id);
       if(error) throw error;
       setProfile(p=>({...p,...form})); showToast("Profile saved ✓");
     } catch(e){showToast(e.message,"error");}
@@ -2339,6 +2357,68 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
           </div>
         </div>
         <p className="text-white/30 text-xs mt-2">Tap Save Profile below to apply. Your QR code also shows your profile photo in the centre.</p>
+      </Card>
+
+      {/* Cover image for the card */}
+      <Card className="p-4">
+        <div className="text-white font-semibold text-sm mb-1">Card cover image</div>
+        <div className="text-white/40 text-xs mb-3">Shows at the top of your digital card. If none, your card colour is used.</div>
+        {form.cover_url&&<img src={form.cover_url} alt="cover" className="w-full h-28 object-cover rounded-2xl mb-3" style={{border:`1px solid ${BORDER}`}}/>}
+        <div className="flex gap-2">
+          <label className="flex-1 text-center py-2.5 rounded-2xl text-sm font-semibold cursor-pointer text-white" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>
+            {coverUploading?"Uploading…":(form.cover_url?"Change cover":"Upload cover")}
+            <input type="file" accept="image/*" className="hidden" disabled={coverUploading} onChange={async e=>{
+              const file=e.target.files?.[0]; if(!file) return;
+              setCoverUploading(true);
+              try { const url=await uploadImage(file,"avatars",`cover-${user.id}`); setForm(f=>({...f,cover_url:url})); showToast("Cover uploaded — tap Save Profile to apply ✓"); }
+              catch(err){ showToast(err.message||"Upload failed","error"); }
+              setCoverUploading(false);
+            }}/>
+          </label>
+          {form.cover_url&&<button onClick={()=>setForm(f=>({...f,cover_url:""}))} className="px-4 py-2.5 rounded-2xl text-sm text-white/50" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>Remove</button>}
+        </div>
+      </Card>
+
+      {/* My Business manager */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-white font-semibold text-sm">My Business</div>
+          <button onClick={()=>setForm(f=>({...f,businesses:[...(f.businesses||[]),{name:"",website:"",services:"",address:"",logo_url:""}]}))}
+            className="text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>+ Add business</button>
+        </div>
+        <div className="text-white/40 text-xs mb-3">These appear in a "My Business" section on your digital card.</div>
+        {(form.businesses||[]).length===0&&<div className="text-white/30 text-xs text-center py-3">No businesses added yet</div>}
+        <div className="space-y-4">
+          {(form.businesses||[]).map((b,i)=>(
+            <div key={i} className="rounded-2xl p-3 space-y-2" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+              <div className="flex items-center justify-between">
+                <span className="text-white/50 text-xs font-semibold">Business {i+1}</span>
+                <button onClick={()=>setForm(f=>({...f,businesses:f.businesses.filter((_,j)=>j!==i)}))} className="text-red-400/70 text-xs">✕ Remove</button>
+              </div>
+              <div className="flex items-center gap-3">
+                {b.logo_url
+                  ? <img src={b.logo_url} alt="" className="w-12 h-12 rounded-xl object-cover flex-shrink-0" style={{border:`1px solid ${BORDER}`}}/>
+                  : <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 text-white/30 text-xs" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>Logo</div>}
+                <label className="text-xs font-semibold cursor-pointer text-purple-300">
+                  {b.logo_url?"Change logo":"Upload logo"}
+                  <input type="file" accept="image/*" className="hidden" onChange={async e=>{
+                    const file=e.target.files?.[0]; if(!file) return;
+                    try { const url=await uploadImage(file,"avatars",`biz-${user.id}-${i}`); setForm(f=>({...f,businesses:f.businesses.map((x,j)=>j===i?{...x,logo_url:url}:x)})); showToast("Logo uploaded ✓"); }
+                    catch(err){ showToast(err.message||"Upload failed","error"); }
+                  }}/>
+                </label>
+              </div>
+              <input value={b.name} onChange={e=>setForm(f=>({...f,businesses:f.businesses.map((x,j)=>j===i?{...x,name:e.target.value}:x)}))} placeholder="Business name"
+                className="w-full rounded-xl px-3 py-2 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              <input value={b.services} onChange={e=>setForm(f=>({...f,businesses:f.businesses.map((x,j)=>j===i?{...x,services:e.target.value}:x)}))} placeholder="Services (e.g. Bookkeeping, Tax)"
+                className="w-full rounded-xl px-3 py-2 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              <input value={b.website} onChange={e=>setForm(f=>({...f,businesses:f.businesses.map((x,j)=>j===i?{...x,website:e.target.value}:x)}))} placeholder="Website"
+                className="w-full rounded-xl px-3 py-2 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              <input value={b.address} onChange={e=>setForm(f=>({...f,businesses:f.businesses.map((x,j)=>j===i?{...x,address:e.target.value}:x)}))} placeholder="Address"
+                className="w-full rounded-xl px-3 py-2 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+            </div>
+          ))}
+        </div>
       </Card>
 
       {/* Contacts captured from your card */}
@@ -2862,30 +2942,59 @@ function BusinessCardPage({ userId }) {
   const color=pal(p.id);
   const brandHex = p.brand_color || "#7c6fe0";
   const brandGrad = `linear-gradient(135deg, ${brandHex}, ${brandHex}aa)`;
+  // Tint the whole page background subtly with the chosen brand colour
+  const pageBg = `radial-gradient(circle at 50% 0%, ${brandHex}33, ${BG} 60%)`;
+  let businesses=[]; try { businesses = Array.isArray(p.businesses)?p.businesses:(p.businesses?JSON.parse(p.businesses):[]); } catch(e){ businesses=[]; }
   return (
-    <div className="min-h-screen flex flex-col items-center px-4 py-8" style={{background:BG}}>
-      <BgGlow/>
+    <div className="min-h-screen flex flex-col items-center px-4 py-8" style={{background:pageBg}}>
       <div className="w-full max-w-md relative">
         {/* Card */}
         <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className="rounded-3xl overflow-hidden" style={{background:"#0f1320",border:`1px solid ${BORDER}`,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
-          {/* Header banner */}
-          <div className="p-7 pb-6 text-center relative" style={{background:brandGrad}}>
-            <div className="flex justify-center mb-4"><Av name={p.name} url={p.avatar_url} color={color} size="2xl" ring/></div>
+          {/* Cover image (or brand colour) — Blinq style */}
+          <div className="relative" style={{height:"140px",background: p.cover_url?`#0f1320`:brandGrad}}>
+            {p.cover_url&&<img src={p.cover_url} alt="" className="w-full h-full object-cover"/>}
+          </div>
+          {/* Avatar overlapping the cover */}
+          <div className="px-6 -mt-12 relative">
+            <Av name={p.name} url={p.avatar_url} color={color} size="2xl" ring/>
+          </div>
+          {/* Identity */}
+          <div className="px-6 pt-3 pb-1">
             <div className="text-white font-bold text-2xl">{p.name}</div>
-            {p.role&&<div className="text-white/80 text-sm mt-1">{p.role}</div>}
-            {p.business_name&&<div className="text-white text-sm mt-0.5 font-semibold">{p.business_name}</div>}
-            {p.location&&<div className="text-white/60 text-xs mt-2">📍 {p.location}</div>}
-            {p.headline&&<div className="text-white/70 text-sm mt-3 italic">"{p.headline}"</div>}
+            {p.role&&<div className="text-white/60 text-sm mt-1">{p.role}</div>}
+            {p.location&&<div className="text-white/40 text-xs mt-2">📍 {p.location}</div>}
+            {p.headline&&<div className="text-white/55 text-sm mt-3 italic">"{p.headline}"</div>}
           </div>
 
           <div className="p-6 space-y-5">
-            {p.bio&&<p className="text-white/65 text-sm leading-relaxed text-center">{p.bio}</p>}
+            {p.bio&&<p className="text-white/65 text-sm leading-relaxed">{p.bio}</p>}
 
             {/* Skills */}
             {p.skills?.length>0&&(
-              <div className="flex flex-wrap gap-2 justify-center">{p.skills.map(s=><SkillChip key={s} label={s}/>)}</div>
+              <div className="flex flex-wrap gap-2">{p.skills.map(s=><SkillChip key={s} label={s}/>)}</div>
             )}
 
+            {/* My Business section(s) */}
+            {businesses.length>0&&(
+              <div className="space-y-3">
+                <div className="text-white/40 text-xs uppercase tracking-wider font-semibold">My Business</div>
+                {businesses.map((b,i)=>(
+                  <div key={i} className="rounded-2xl p-4" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                    <div className="flex items-center gap-3">
+                      {b.logo_url
+                        ? <img src={b.logo_url} alt="" className="w-12 h-12 rounded-xl object-cover flex-shrink-0" style={{border:`1px solid ${BORDER}`}}/>
+                        : <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-bold" style={{background:brandGrad}}>{(b.name||"B")[0]}</div>}
+                      <div className="min-w-0">
+                        <div className="text-white font-semibold text-sm truncate">{b.name}</div>
+                        {b.services&&<div className="text-white/50 text-xs">{b.services}</div>}
+                      </div>
+                    </div>
+                    {b.address&&<div className="text-white/40 text-xs mt-2">📍 {b.address}</div>}
+                    {b.website&&<a href={b.website.startsWith("http")?b.website:`https://${b.website}`} target="_blank" rel="noreferrer" className="inline-block text-xs mt-2 font-medium" style={{color:brandHex}}>🌐 {b.website.replace(/^https?:\/\//,"")}</a>}
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Contact buttons */}
             <div className="space-y-2">
               {p.mobile&&<a href={`tel:${p.mobile}`} className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium text-white/80" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>📱 <span>{p.mobile}</span></a>}
