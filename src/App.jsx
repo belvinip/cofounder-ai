@@ -835,10 +835,10 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
     if(!user) return;
     const {data} = await supabase.from("match_requests").select("*").or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`);
     const m={}; (data||[]).forEach(r=>{ const o=r.from_user_id===user.id?r.to_user_id:r.from_user_id; m[o]=r; }); setMatchMap(m);
-    const incoming = (data||[]).filter(r=>r.to_user_id===user.id && r.status==="pending");
+    const incoming = (data||[]).filter(r=>r.to_user_id===user.id && r.status==="pending" && r.from_user_id!==user.id);
     if(incoming.length){
       const {data:profs} = await supabase.from("profiles").select("*").in("id", incoming.map(r=>r.from_user_id));
-      setIncomingReqs(incoming.map(r=>({...r, sender:(profs||[]).find(p=>p.id===r.from_user_id)})));
+      setIncomingReqs(incoming.map(r=>({...r, sender:(profs||[]).find(p=>p.id===r.from_user_id)||{id:r.from_user_id,name:"A member"}})));
     } else setIncomingReqs([]);
   }
 
@@ -1935,10 +1935,11 @@ function ProjectJoinRequests({ user, showToast }) {
   async function load() {
     if(!user) return;
     const {data} = await supabase.from("project_requests").select("*, project:projects(project_name)").eq("owner_id",user.id);
-    const reqs = data||[];
+    const reqs = (data||[]).filter(r=>r.from_user_id!==user.id); // ignore any self-requests
     if(reqs.length){
       const {data:profs} = await supabase.from("profiles").select("*").in("id", reqs.map(r=>r.from_user_id));
-      setRequests(reqs.map(r=>({...r, sender:(profs||[]).find(p=>p.id===r.from_user_id)})).filter(r=>r.sender));
+      // Keep ALL requests; attach sender if found, otherwise a fallback so it still shows + can be actioned
+      setRequests(reqs.map(r=>({...r, sender:(profs||[]).find(p=>p.id===r.from_user_id)||{id:r.from_user_id,name:"A member"}})));
     } else setRequests([]);
     setLoading(false);
   }
@@ -3133,7 +3134,7 @@ export default function App() {
   // Badge count per tab
   const badgeFor=(id)=>{
     if(viewAs) return 0;
-    if(id==="matching") return notif.partner+notif.messages;
+    if(id==="matching") return notif.partner;
     if(id==="projects") return notif.project;
     if(id==="events") return notif.events;
     return 0;
