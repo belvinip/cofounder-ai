@@ -2908,6 +2908,12 @@ function BusinessCardPage({ userId }) {
               <button onClick={share} className="w-full py-3 rounded-2xl text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white"}}>
                 {copied?"✓ Link copied!":"🔗 Share this card"}
               </button>
+              <div className="w-full">
+                <button disabled className="w-full py-3 rounded-2xl text-sm font-semibold cursor-not-allowed" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.35)"}}>
+                  🎟️ Add to Apple / Google Wallet
+                </button>
+                <div className="text-center text-white/30 text-xs mt-1.5">Wallet feature coming soon</div>
+              </div>
               {views!=null&&views>0&&<div className="text-white/30 text-xs">👁 Viewed {views} time{views===1?"":"s"}</div>}
             </div>
           </div>
