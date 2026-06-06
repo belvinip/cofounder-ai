@@ -1959,6 +1959,9 @@ function ProjectJoinRequests({ user, showToast }) {
   const pending = requests.filter(r=>r.status==="pending");
   const accepted = requests.filter(r=>r.status==="accepted");
 
+  // Don't render anything if there are no requests at all (keeps tabs clean + matches badge)
+  if(!loading && requests.length===0) return null;
+
   return (
     <Card className="p-5 space-y-4">
       <div className="flex items-center gap-2">
@@ -1968,7 +1971,6 @@ function ProjectJoinRequests({ user, showToast }) {
       </div>
 
       {loading&&<div className="text-white/30 text-sm text-center py-4">Loading…</div>}
-      {!loading&&requests.length===0&&<div className="text-white/30 text-sm text-center py-4">No one has requested to join your project yet</div>}
 
       {pending.map(req=>{
         const s=req.sender;
@@ -2075,6 +2077,9 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
         <h1 className="text-3xl font-bold leading-tight" style={{background:"linear-gradient(135deg,#7cb9e8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Discover Projects</h1>
         <p className="text-white/45 text-sm mt-1">Find projects to join and request to partner up</p>
       </div>
+
+      {/* Join requests to MY projects — shown here so it matches the Projects tab badge */}
+      {user&&<ProjectJoinRequests user={user} showToast={showToast}/>}
 
       {/* Search + filter */}
       <div className="space-y-3">
