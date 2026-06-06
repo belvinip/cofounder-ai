@@ -2185,8 +2185,42 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
 // ════════════════════════════════════════════════════════
 // PROFILE TAB
 // ════════════════════════════════════════════════════════
+function CardContacts({ user }) {
+  const [contacts,setContacts]=useState([]);
+  const [open,setOpen]=useState(false);
+  useEffect(()=>{
+    if(!user) return;
+    supabase.from("card_contacts").select("*").eq("profile_id",user.id).order("created_at",{ascending:false})
+      .then(({data})=>setContacts(data||[])).catch(()=>{});
+  },[user]);
+  if(contacts.length===0) return null;
+  return (
+    <Card className="p-4">
+      <button onClick={()=>setOpen(o=>!o)} className="w-full flex items-center justify-between">
+        <div className="text-left">
+          <div className="text-white font-semibold text-sm">📥 Contacts from your card ({contacts.length})</div>
+          <div className="text-white/40 text-xs">People who shared their details back</div>
+        </div>
+        <span className="text-white/40">{open?"▾":"▸"}</span>
+      </button>
+      {open&&(
+        <div className="space-y-2 mt-3">
+          {contacts.map(c=>(
+            <div key={c.id} className="p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+              <div className="text-white text-sm font-semibold">{c.name}</div>
+              <div className="text-white/50 text-xs">{c.email}{c.mobile?`  ·  ${c.mobile}`:""}</div>
+              {c.note&&<div className="text-white/40 text-xs mt-1 italic">"{c.note}"</div>}
+              <div className="text-white/25 text-[10px] mt-1">{new Date(c.created_at).toLocaleDateString()}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
-  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:""});
+  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:"",brand_color:"#7c6fe0"});
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState("identity");
@@ -2194,7 +2228,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
   const avatarInputRef = useRef();
 
   useEffect(()=>{
-    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||"",headline:profile.headline||"",availability:profile.availability||"",project_stage:profile.project_stage||"",project_website:profile.project_website||"",team_size:profile.team_size||"",funding_status:profile.funding_status||""});
+    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||"",headline:profile.headline||"",availability:profile.availability||"",project_stage:profile.project_stage||"",project_website:profile.project_website||"",team_size:profile.team_size||"",funding_status:profile.funding_status||"",brand_color:profile.brand_color||"#7c6fe0"});
   },[profile]);
 
   const pitchScore=(()=>{let s=0;if(form.project_name?.length>3)s+=25;if(form.project_pitch?.length>20)s+=30;if(form.project_pitch?.length>80)s+=20;if(form.project_industry)s+=25;return Math.min(s,100);})();
@@ -2220,7 +2254,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         showToast("WhatsApp must be an Australian number starting with +61","error");
         setSaving(false); return;
       }
-      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,business_name:form.business_name,wechat:form.wechat,headline:form.headline,availability:form.availability,project_stage:form.project_stage,project_website:form.project_website,team_size:form.team_size,funding_status:form.funding_status,updated_at:new Date().toISOString()}).eq("id",user.id);
+      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,business_name:form.business_name,wechat:form.wechat,headline:form.headline,availability:form.availability,project_stage:form.project_stage,project_website:form.project_website,team_size:form.team_size,funding_status:form.funding_status,brand_color:form.brand_color,updated_at:new Date().toISOString()}).eq("id",user.id);
       if(error) throw error;
       setProfile(p=>({...p,...form})); showToast("Profile saved ✓");
     } catch(e){showToast(e.message,"error");}
@@ -2282,6 +2316,27 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         className="w-full -mt-2 py-2 text-white/40 hover:text-white/70 text-xs transition-colors">
         🔗 Copy my card link
       </button>
+
+      {/* Card brand color picker */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-white font-semibold text-sm">Card colour</div>
+            <div className="text-white/40 text-xs">Personalise your business card's look</div>
+          </div>
+          <div className="flex items-center gap-2">
+            {["#7c6fe0","#0a66c2","#10b981","#ef4444","#f59e0b","#ec4899","#0f172a"].map(c=>(
+              <button key={c} onClick={()=>setForm(f=>({...f,brand_color:c}))}
+                className="w-7 h-7 rounded-full transition-transform" style={{background:c,border:form.brand_color===c?"3px solid #fff":"2px solid rgba(255,255,255,0.2)",transform:form.brand_color===c?"scale(1.15)":"scale(1)"}}/>
+            ))}
+            <input type="color" value={form.brand_color} onChange={e=>setForm(f=>({...f,brand_color:e.target.value}))} className="w-7 h-7 rounded-full bg-transparent cursor-pointer" title="Custom colour"/>
+          </div>
+        </div>
+        <p className="text-white/30 text-xs mt-2">Tap Save Profile below to apply. Your QR code also shows your profile photo in the centre.</p>
+      </Card>
+
+      {/* Contacts captured from your card */}
+      <CardContacts user={user}/>
 
       {/* Profile completeness meter */}
       {(()=>{
@@ -2721,13 +2776,39 @@ function OnboardingModal({ user, onComplete }) {
 function BusinessCardPage({ userId }) {
   const [p, setP] = useState(undefined);
   const [copied, setCopied] = useState(false);
+  const [views, setViews] = useState(null);
+  const [showExchange, setShowExchange] = useState(false);
+  const [exchange, setExchange] = useState({name:"",email:"",mobile:"",note:""});
+  const [exchangeSent, setExchangeSent] = useState(false);
   const cardUrl = `${window.location.origin}${window.location.pathname}?card=${userId}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&bgcolor=15-19-32&color=255-255-255&qzone=2&data=${encodeURIComponent(cardUrl)}`;
+  // brand color (falls back to purple). QR uses the brand color + optional center logo.
+  const brand = (p?.brand_color||"#7c6fe0").replace("#","");
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(cardUrl)}`;
 
   useEffect(()=>{
     supabase.from("profiles").select("*").eq("id",userId).single()
       .then(({data})=>setP(data||null)).catch(()=>setP(null));
+    // Record a view (best-effort; ignores errors) and fetch the running total
+    (async()=>{
+      try {
+        await supabase.from("card_views").insert({ profile_id: userId });
+        const { count } = await supabase.from("card_views").select("*", { count:"exact", head:true }).eq("profile_id", userId);
+        setViews(count);
+      } catch(e){}
+    })();
   },[userId]);
+
+  async function submitExchange(){
+    if(!exchange.name.trim()||(!exchange.email.trim()&&!exchange.mobile.trim())){ return; }
+    try {
+      await supabase.from("card_contacts").insert({
+        profile_id: userId, name: exchange.name, email: exchange.email, mobile: exchange.mobile, note: exchange.note,
+      });
+      // Email the card owner that someone shared their details back
+      if(p?.email) sendEmail("new_message", p.email, { fromName: `${exchange.name} (via your card)` });
+      setExchangeSent(true);
+    } catch(e){ setExchangeSent(true); } // still thank them even if storage hiccups
+  }
 
   function saveContact(){
     const nm=(p.name||"").trim();
@@ -2773,6 +2854,8 @@ function BusinessCardPage({ userId }) {
   );
 
   const color=pal(p.id);
+  const brandHex = p.brand_color || "#7c6fe0";
+  const brandGrad = `linear-gradient(135deg, ${brandHex}, ${brandHex}aa)`;
   return (
     <div className="min-h-screen flex flex-col items-center px-4 py-8" style={{background:BG}}>
       <BgGlow/>
@@ -2780,13 +2863,13 @@ function BusinessCardPage({ userId }) {
         {/* Card */}
         <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className="rounded-3xl overflow-hidden" style={{background:"#0f1320",border:`1px solid ${BORDER}`,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
           {/* Header banner */}
-          <div className="p-7 pb-6 text-center relative" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.35),rgba(167,139,250,0.12))"}}>
+          <div className="p-7 pb-6 text-center relative" style={{background:brandGrad}}>
             <div className="flex justify-center mb-4"><Av name={p.name} url={p.avatar_url} color={color} size="2xl" ring/></div>
             <div className="text-white font-bold text-2xl">{p.name}</div>
-            {p.role&&<div className="text-white/70 text-sm mt-1">{p.role}</div>}
-            {p.business_name&&<div className="text-purple-300 text-sm mt-0.5 font-semibold">{p.business_name}</div>}
-            {p.location&&<div className="text-white/45 text-xs mt-2">📍 {p.location}</div>}
-            {p.headline&&<div className="text-white/55 text-sm mt-3 italic">"{p.headline}"</div>}
+            {p.role&&<div className="text-white/80 text-sm mt-1">{p.role}</div>}
+            {p.business_name&&<div className="text-white text-sm mt-0.5 font-semibold">{p.business_name}</div>}
+            {p.location&&<div className="text-white/60 text-xs mt-2">📍 {p.location}</div>}
+            {p.headline&&<div className="text-white/70 text-sm mt-3 italic">"{p.headline}"</div>}
           </div>
 
           <div className="p-6 space-y-5">
@@ -2808,15 +2891,24 @@ function BusinessCardPage({ userId }) {
             </div>
 
             {/* Save contact */}
-            <button onClick={saveContact} className="w-full py-3 rounded-2xl text-white font-semibold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>💾 Save to Contacts</button>
+            <button onClick={saveContact} className="w-full py-3 rounded-2xl text-white font-semibold" style={{background:brandGrad}}>💾 Save to Contacts</button>
+
+            {/* Two-way: share details back */}
+            <button onClick={()=>setShowExchange(true)} className="w-full py-3 rounded-2xl text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white"}}>
+              🔄 Share your details back
+            </button>
 
             {/* QR + share */}
             <div className="pt-4 flex flex-col items-center gap-3" style={{borderTop:`1px solid ${BORDER}`}}>
               <div className="text-white/40 text-xs uppercase tracking-wider">Scan to open this card</div>
-              <img src={qrUrl} alt="QR code" className="rounded-2xl" width={180} height={180} style={{background:"#0f1320"}}/>
+              <div className="relative rounded-2xl overflow-hidden" style={{padding:"10px",background:"#fff"}}>
+                <img src={qrUrl} alt="QR code" width={180} height={180}/>
+                {p.avatar_url&&<img src={p.avatar_url} alt="" className="absolute top-1/2 left-1/2 rounded-lg" style={{width:"40px",height:"40px",transform:"translate(-50%,-50%)",border:"3px solid #fff",objectFit:"cover"}}/>}
+              </div>
               <button onClick={share} className="w-full py-3 rounded-2xl text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white"}}>
                 {copied?"✓ Link copied!":"🔗 Share this card"}
               </button>
+              {views!=null&&views>0&&<div className="text-white/30 text-xs">👁 Viewed {views} time{views===1?"":"s"}</div>}
             </div>
           </div>
         </motion.div>
@@ -2830,6 +2922,43 @@ function BusinessCardPage({ userId }) {
           <div className="text-white/30 text-xs mt-3">Join our founder community to create yours</div>
         </motion.div>
       </div>
+
+      {/* Contact exchange modal */}
+      <AnimatePresence>{showExchange&&(
+        <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+          className="fixed inset-0 z-[90] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4"
+          onClick={e=>e.target===e.currentTarget&&setShowExchange(false)}>
+          <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
+            className="w-full md:max-w-sm rounded-t-3xl md:rounded-3xl p-6" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
+            {exchangeSent?(
+              <div className="text-center py-6">
+                <div className="text-4xl mb-3">✅</div>
+                <div className="text-white font-bold text-lg mb-2">Details sent to {p.name}!</div>
+                <div className="text-white/50 text-sm mb-6">They'll be in touch. Want your own digital card too?</div>
+                <a href={window.location.origin} className="inline-block px-6 py-3 rounded-2xl text-white font-bold" style={{background:brandGrad}}>✨ Create Your Own — Free</a>
+              </div>
+            ):(
+              <>
+                <div className="text-white font-bold text-lg mb-1">Share your details with {p.name}</div>
+                <div className="text-white/45 text-sm mb-4">They'll receive your contact info so they can connect back.</div>
+                <div className="space-y-3">
+                  <input value={exchange.name} onChange={e=>setExchange(x=>({...x,name:e.target.value}))} placeholder="Your name *"
+                    className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                  <input value={exchange.email} onChange={e=>setExchange(x=>({...x,email:e.target.value}))} placeholder="Email" type="email"
+                    className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                  <input value={exchange.mobile} onChange={e=>setExchange(x=>({...x,mobile:e.target.value}))} placeholder="Mobile"
+                    className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                  <textarea value={exchange.note} onChange={e=>setExchange(x=>({...x,note:e.target.value}))} placeholder="Note (optional) — where you met, etc." rows={2}
+                    className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none resize-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                </div>
+                <div className="text-white/30 text-xs mt-2 mb-4">* Name plus an email or mobile required</div>
+                <button onClick={submitExchange} className="w-full py-3 rounded-2xl text-white font-bold mb-2" style={{background:brandGrad}}>Send my details</button>
+                <button onClick={()=>setShowExchange(false)} className="w-full py-2 text-white/40 text-sm">Cancel</button>
+              </>
+            )}
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
     </div>
   );
 }
