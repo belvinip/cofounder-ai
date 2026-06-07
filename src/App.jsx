@@ -2249,6 +2249,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
   const [section, setSection] = useState("identity");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
+  const [autoSaved, setAutoSaved] = useState(false);
   const avatarInputRef = useRef();
 
   useEffect(()=>{
@@ -2270,20 +2271,45 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
     setUploadingAvatar(false);
   }
 
-  async function save() {
-    setSaving(true);
+  async function save(silent=false) {
+    if(!silent) setSaving(true);
     try {
-      // Validate WhatsApp — AU only (+61)
+      // Validate WhatsApp — AU only (+61). On silent auto-save, skip toast but don't write a bad number.
       if(form.whatsapp && !form.whatsapp.replace(/\s/g,"").match(/^\+61[0-9]{8,9}$/)){
-        showToast("WhatsApp must be an Australian number starting with +61","error");
+        if(!silent) showToast("WhatsApp must be an Australian number starting with +61","error");
         setSaving(false); return;
       }
-      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,business_name:form.business_name,wechat:form.wechat,headline:form.headline,availability:form.availability,project_stage:form.project_stage,project_website:form.project_website,team_size:parseInt(form.team_size)||null,funding_status:form.funding_status,brand_color:form.brand_color,cover_url:form.cover_url,businesses:form.businesses,updated_at:new Date().toISOString()}).eq("id",user.id);
+      const toInt = (v) => { const n = parseInt(v,10); return Number.isFinite(n) ? n : null; };
+      const payload = {
+        name: form.name||"", bio: form.bio||"", experience: toInt(form.experience) ?? 0,
+        location: form.location||"", skills: Array.isArray(form.skills)?form.skills:[],
+        mobile: form.mobile||"", role: form.role||"",
+        project_name: form.project_name||"", project_pitch: form.project_pitch||"", project_industry: form.project_industry||"",
+        linkedin_url: form.linkedin_url||"", website_url: form.website_url||"", whatsapp: form.whatsapp||"",
+        roles_needed: Array.isArray(form.roles_needed)?form.roles_needed:[],
+        business_name: form.business_name||"", wechat: form.wechat||"", headline: form.headline||"", availability: form.availability||"",
+        project_stage: form.project_stage||"", project_website: form.project_website||"", team_size: toInt(form.team_size),
+        funding_status: form.funding_status||"", brand_color: form.brand_color||"#7c6fe0",
+        cover_url: form.cover_url||"", businesses: Array.isArray(form.businesses)?form.businesses:[],
+        updated_at: new Date().toISOString(),
+      };
+      const {error}=await supabase.from("profiles").update(payload).eq("id",user.id);
       if(error) throw error;
-      setProfile(p=>({...p,...form})); showToast("Profile saved ✓");
-    } catch(e){showToast(e.message,"error");}
-    setSaving(false);
+      setProfile(p=>({...p,...form}));
+      if(!silent) showToast("Profile saved ✓"); else setAutoSaved(true);
+    } catch(e){ if(!silent) showToast(e.message||e.hint||e.details||"Save failed","error"); console.error("Profile save error:",e);}
+    if(!silent) setSaving(false);
   }
+
+  // Auto-save: 1.2s after the user stops editing, save silently.
+  const firstRender = useRef(true);
+  useEffect(()=>{
+    if(!user) return;
+    if(firstRender.current){ firstRender.current=false; return; } // don't save on initial load
+    const t=setTimeout(()=>{ save(true); }, 1200);
+    return ()=>clearTimeout(t);
+  // eslint-disable-next-line
+  },[form]);
 
   function addSkill(e){if(e.key==="Enter"&&newSkill.trim()&&!form.skills.includes(newSkill.trim())){setForm(f=>({...f,skills:[...f.skills,newSkill.trim()]}));setNewSkill("");}}
   const color=pal(user?.id);
@@ -2356,7 +2382,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
             <input type="color" value={form.brand_color} onChange={e=>setForm(f=>({...f,brand_color:e.target.value}))} className="w-7 h-7 rounded-full bg-transparent cursor-pointer" title="Custom colour"/>
           </div>
         </div>
-        <p className="text-white/30 text-xs mt-2">Tap Save Profile below to apply. Your QR code also shows your profile photo in the centre.</p>
+        <p className="text-white/30 text-xs mt-2">Changes save automatically. Your QR code also shows your profile photo in the centre.</p>
       </Card>
 
       {/* Cover image for the card */}
@@ -2370,7 +2396,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
             <input type="file" accept="image/*" className="hidden" disabled={coverUploading} onChange={async e=>{
               const file=e.target.files?.[0]; if(!file) return;
               setCoverUploading(true);
-              try { const url=await uploadImage(file,"avatars",`cover-${user.id}`); setForm(f=>({...f,cover_url:url})); showToast("Cover uploaded — tap Save Profile to apply ✓"); }
+              try { const url=await uploadImage(file,"avatars",`cover-${user.id}`); setForm(f=>({...f,cover_url:url})); showToast("Cover uploaded ✓"); }
               catch(err){ showToast(err.message||"Upload failed","error"); }
               setCoverUploading(false);
             }}/>
@@ -2579,7 +2605,10 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         )}
       </AnimatePresence>
 
-      <PrimaryBtn onClick={save} loading={saving} className="w-full">Save Profile</PrimaryBtn>
+      <div className="space-y-2">
+        <PrimaryBtn onClick={()=>save(false)} loading={saving} className="w-full">Save Profile</PrimaryBtn>
+        <div className="text-center text-white/35 text-xs">{autoSaved?"✓ Changes save automatically":"Changes save automatically as you edit"}</div>
+      </div>
 
       {/* Social links display */}
       {(profile?.linkedin_url||profile?.website_url||profile?.whatsapp)&&(
