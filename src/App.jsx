@@ -2278,7 +2278,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         showToast("WhatsApp must be an Australian number starting with +61","error");
         setSaving(false); return;
       }
-      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,business_name:form.business_name,wechat:form.wechat,headline:form.headline,availability:form.availability,project_stage:form.project_stage,project_website:form.project_website,team_size:form.team_size,funding_status:form.funding_status,brand_color:form.brand_color,cover_url:form.cover_url,businesses:form.businesses,updated_at:new Date().toISOString()}).eq("id",user.id);
+      const {error}=await supabase.from("profiles").update({name:form.name,bio:form.bio,experience:parseInt(form.experience)||0,location:form.location,skills:form.skills,mobile:form.mobile,role:form.role,project_name:form.project_name,project_pitch:form.project_pitch,project_industry:form.project_industry,linkedin_url:form.linkedin_url,website_url:form.website_url,whatsapp:form.whatsapp,roles_needed:form.roles_needed,business_name:form.business_name,wechat:form.wechat,headline:form.headline,availability:form.availability,project_stage:form.project_stage,project_website:form.project_website,team_size:parseInt(form.team_size)||null,funding_status:form.funding_status,brand_color:form.brand_color,cover_url:form.cover_url,businesses:form.businesses,updated_at:new Date().toISOString()}).eq("id",user.id);
       if(error) throw error;
       setProfile(p=>({...p,...form})); showToast("Profile saved ✓");
     } catch(e){showToast(e.message,"error");}
@@ -2968,6 +2968,14 @@ function BusinessCardPage({ userId }) {
 
           <div className="p-6 space-y-5">
             {p.bio&&<p className="text-white/65 text-sm leading-relaxed">{p.bio}</p>}
+
+            {/* Quick facts */}
+            {(p.experience>0||p.availability)&&(
+              <div className="flex flex-wrap gap-2">
+                {p.experience>0&&<span className="px-3 py-1.5 rounded-full text-xs font-medium" style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.7)",border:`1px solid ${BORDER}`}}>💼 {p.experience} yrs experience</span>}
+                {p.availability&&<span className="px-3 py-1.5 rounded-full text-xs font-medium" style={{background:`${brandHex}22`,color:brandHex,border:`1px solid ${brandHex}44`}}>🟢 {p.availability}</span>}
+              </div>
+            )}
 
             {/* Skills */}
             {p.skills?.length>0&&(
