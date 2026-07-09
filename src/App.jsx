@@ -624,6 +624,7 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
   const [uploadingAv, setUploadingAv] = useState(false);
   const avRef = useRef();
   const [localAvatar, setLocalAvatar] = useState(p.avatar_url);
+  const [showBooking, setShowBooking] = useState(false);
 
   async function reportUser() {
     const reason = prompt("Report this profile — briefly, what's the issue? (spam, fake, inappropriate, etc.)");
@@ -804,6 +805,12 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
           ) : (
             <PrimaryBtn onClick={()=>{onRequest(p);onClose();}} className="w-full">🤝 Send Partnership Request</PrimaryBtn>
           )}
+
+          {/* Book a meeting (if host enabled bookings) */}
+          {p.booking_enabled&&!isDemo&&p.id!==user?.id&&(
+            <button onClick={()=>setShowBooking(true)} className="w-full py-3 rounded-2xl text-white font-bold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>📅 Book a meeting</button>
+          )}
+          {showBooking&&<BookingModal host={p} onClose={()=>setShowBooking(false)}/>}
 
           {/* Report (real profiles, not self, not demo) */}
           {user&&!isDemo&&p.id!==user.id&&(
@@ -2208,6 +2215,116 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
 // ════════════════════════════════════════════════════════
 // PROFILE TAB
 // ════════════════════════════════════════════════════════
+function BookingSettings({ form, setForm }) {
+  const hours = form.booking_hours || DEFAULT_HOURS;
+  const setDay=(k,patch)=>setForm(f=>({...f,booking_hours:{...(f.booking_hours||DEFAULT_HOURS),[k]:{...(f.booking_hours||DEFAULT_HOURS)[k],...patch}}}));
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-white font-semibold text-sm">📅 Meeting bookings</div>
+          <div className="text-white/40 text-xs">Let people book meetings with you from your card and profile</div>
+        </div>
+        <button onClick={()=>setForm(f=>({...f,booking_enabled:!f.booking_enabled}))}
+          className="w-12 h-7 rounded-full transition-colors relative flex-shrink-0"
+          style={{background:form.booking_enabled?"#7c6fe0":"rgba(255,255,255,0.15)"}}>
+          <span className="absolute top-1 w-5 h-5 rounded-full bg-white transition-all" style={{left:form.booking_enabled?"26px":"4px"}}/>
+        </button>
+      </div>
+      {form.booking_enabled&&(
+        <div className="mt-4 space-y-4">
+          <div>
+            <div className="text-white/50 text-xs mb-2">MEETING LENGTH</div>
+            <div className="flex gap-2">
+              {[15,30,45,60].map(d=>(
+                <button key={d} onClick={()=>setForm(f=>({...f,booking_duration:d}))}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold transition-colors"
+                  style={{background:form.booking_duration===d?"rgba(124,111,224,0.3)":"rgba(255,255,255,0.05)",border:form.booking_duration===d?"1px solid #7c6fe0":`1px solid ${BORDER}`,color:form.booking_duration===d?"#c4b5fd":"rgba(255,255,255,0.5)"}}>
+                  {d} min
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-white/50 text-xs mb-2">WEEKLY AVAILABILITY</div>
+            <div className="space-y-2">
+              {["mon","tue","wed","thu","fri","sat","sun"].map(k=>(
+                <div key={k} className="flex items-center gap-2">
+                  <button onClick={()=>setDay(k,{on:!hours[k].on})}
+                    className="w-10 h-6 rounded-full transition-colors relative flex-shrink-0"
+                    style={{background:hours[k].on?"#7c6fe0":"rgba(255,255,255,0.12)"}}>
+                    <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" style={{left:hours[k].on?"18px":"2px"}}/>
+                  </button>
+                  <span className="text-white/70 text-xs w-20">{DAY_LABELS[k]}</span>
+                  {hours[k].on?(
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <input type="time" value={hours[k].start} onChange={e=>setDay(k,{start:e.target.value})}
+                        className="flex-1 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                      <span className="text-white/30 text-xs">–</span>
+                      <input type="time" value={hours[k].end} onChange={e=>setDay(k,{end:e.target.value})}
+                        className="flex-1 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                    </div>
+                  ):(
+                    <span className="text-white/25 text-xs">Unavailable</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="text-white/30 text-xs">Times are Australian Eastern Time. Booked slots are automatically blocked.</div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function MyBookings({ user, showToast }) {
+  const [bookings,setBookings]=useState([]);
+  const [open,setOpen]=useState(false);
+  async function load(){
+    if(!user) return;
+    const {data}=await supabase.from("bookings").select("*").eq("host_id",user.id).neq("status","cancelled")
+      .gte("start_time",new Date().toISOString()).order("start_time");
+    setBookings(data||[]);
+  }
+  useEffect(()=>{ load(); },[user]);
+  async function cancel(b){
+    if(!confirm(`Cancel the booking with ${b.guest_name}?`)) return;
+    await supabase.from("bookings").update({status:"cancelled"}).eq("id",b.id);
+    sendEmail("booking_cancelled", b.guest_email, { hostName:"", when:`${fmtDateNice(new Date(b.start_time))} at ${fmtTime12(`${new Date(b.start_time).getHours()}:${String(new Date(b.start_time).getMinutes()).padStart(2,"0")}`)}` });
+    showToast("Booking cancelled");
+    load();
+  }
+  if(bookings.length===0) return null;
+  return (
+    <Card className="p-4">
+      <button onClick={()=>setOpen(o=>!o)} className="w-full flex items-center justify-between">
+        <div className="text-left">
+          <div className="text-white font-semibold text-sm">📅 Upcoming bookings ({bookings.length})</div>
+          <div className="text-white/40 text-xs">Meetings people booked with you</div>
+        </div>
+        <span className="text-white/40">{open?"▾":"▸"}</span>
+      </button>
+      {open&&(
+        <div className="space-y-2 mt-3">
+          {bookings.map(b=>{
+            const s=new Date(b.start_time);
+            return (
+              <div key={b.id} className="p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                <div className="text-white text-sm font-semibold">{b.guest_name}</div>
+                <div className="text-purple-300 text-xs mt-0.5">{fmtDateNice(s)} · {fmtTime12(`${s.getHours()}:${String(s.getMinutes()).padStart(2,"0")}`)}</div>
+                <div className="text-white/50 text-xs">{b.guest_email}</div>
+                {b.guest_note&&<div className="text-white/40 text-xs mt-1 italic">"{b.guest_note}"</div>}
+                <button onClick={()=>cancel(b)} className="text-red-400/70 text-xs mt-2">✕ Cancel booking</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function CardContacts({ user }) {
   const [contacts,setContacts]=useState([]);
   const [open,setOpen]=useState(false);
@@ -2243,7 +2360,7 @@ function CardContacts({ user }) {
 }
 
 function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
-  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:"",brand_color:"#7c6fe0",cover_url:"",businesses:[]});
+  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:"",brand_color:"#7c6fe0",cover_url:"",businesses:[],booking_enabled:false,booking_duration:30,booking_hours:null});
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState("identity");
@@ -2253,7 +2370,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
   const avatarInputRef = useRef();
 
   useEffect(()=>{
-    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||"",headline:profile.headline||"",availability:profile.availability||"",project_stage:profile.project_stage||"",project_website:profile.project_website||"",team_size:profile.team_size||"",funding_status:profile.funding_status||"",brand_color:profile.brand_color||"#7c6fe0",cover_url:profile.cover_url||"",businesses:Array.isArray(profile.businesses)?profile.businesses:(profile.businesses?JSON.parse(profile.businesses):[])});
+    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||"",headline:profile.headline||"",availability:profile.availability||"",project_stage:profile.project_stage||"",project_website:profile.project_website||"",team_size:profile.team_size||"",funding_status:profile.funding_status||"",brand_color:profile.brand_color||"#7c6fe0",cover_url:profile.cover_url||"",businesses:Array.isArray(profile.businesses)?profile.businesses:(profile.businesses?JSON.parse(profile.businesses):[]),booking_enabled:!!profile.booking_enabled,booking_duration:profile.booking_duration||30,booking_hours:profile.booking_hours||null});
   },[profile]);
 
   const pitchScore=(()=>{let s=0;if(form.project_name?.length>3)s+=25;if(form.project_pitch?.length>20)s+=30;if(form.project_pitch?.length>80)s+=20;if(form.project_industry)s+=25;return Math.min(s,100);})();
@@ -2291,6 +2408,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         project_stage: form.project_stage||"", project_website: form.project_website||"", team_size: toInt(form.team_size),
         funding_status: form.funding_status||"", brand_color: form.brand_color||"#7c6fe0",
         cover_url: form.cover_url||"", businesses: Array.isArray(form.businesses)?form.businesses:[],
+        booking_enabled: !!form.booking_enabled, booking_duration: parseInt(form.booking_duration)||30, booking_hours: form.booking_hours||null,
         updated_at: new Date().toISOString(),
       };
       const {error}=await supabase.from("profiles").update(payload).eq("id",user.id);
@@ -2446,6 +2564,12 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
           ))}
         </div>
       </Card>
+
+      {/* Booking availability (Calendly-style) */}
+      <BookingSettings form={form} setForm={setForm}/>
+
+      {/* Upcoming bookings on me */}
+      <MyBookings user={user} showToast={showToast}/>
 
       {/* Contacts captured from your card */}
       <CardContacts user={user}/>
@@ -2888,11 +3012,178 @@ function OnboardingModal({ user, onComplete }) {
 // ════════════════════════════════════════════════════════
 // PUBLIC DIGITAL BUSINESS CARD — shareable, no login needed
 // ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+// BOOKING (Calendly-style)
+// ════════════════════════════════════════════════════════
+const DAY_KEYS=["sun","mon","tue","wed","thu","fri","sat"];
+const DAY_LABELS={sun:"Sunday",mon:"Monday",tue:"Tuesday",wed:"Wednesday",thu:"Thursday",fri:"Friday",sat:"Saturday"};
+const DEFAULT_HOURS={mon:{on:true,start:"09:00",end:"17:00"},tue:{on:true,start:"09:00",end:"17:00"},wed:{on:true,start:"09:00",end:"17:00"},thu:{on:true,start:"09:00",end:"17:00"},fri:{on:true,start:"09:00",end:"17:00"},sat:{on:false,start:"09:00",end:"17:00"},sun:{on:false,start:"09:00",end:"17:00"}};
+
+function fmtTime12(hhmm){ const [h,m]=hhmm.split(":").map(Number); const ap=h>=12?"pm":"am"; const h12=h%12===0?12:h%12; return `${h12}:${String(m).padStart(2,"0")}${ap}`; }
+function fmtDateNice(d){ return d.toLocaleDateString("en-AU",{weekday:"long",day:"numeric",month:"long"}); }
+
+// Compute free slots for a host on a given date
+function computeSlots(date, hours, durationMin, taken){
+  const key=DAY_KEYS[date.getDay()];
+  const day=(hours||DEFAULT_HOURS)[key];
+  if(!day||!day.on) return [];
+  const slots=[];
+  const [sh,sm]=day.start.split(":").map(Number);
+  const [eh,em]=day.end.split(":").map(Number);
+  const dayStart=new Date(date); dayStart.setHours(sh,sm,0,0);
+  const dayEnd=new Date(date); dayEnd.setHours(eh,em,0,0);
+  const now=new Date();
+  for(let t=new Date(dayStart); t.getTime()+durationMin*60000<=dayEnd.getTime(); t=new Date(t.getTime()+durationMin*60000)){
+    const slotEnd=new Date(t.getTime()+durationMin*60000);
+    if(t<=now) continue; // no past slots
+    const overlaps=(taken||[]).some(b=>{
+      const bs=new Date(b.start_time).getTime(), be=new Date(b.end_time).getTime();
+      return t.getTime()<be && slotEnd.getTime()>bs;
+    });
+    if(!overlaps) slots.push(new Date(t));
+  }
+  return slots;
+}
+
+function BookingModal({ host, onClose }) {
+  const [step,setStep]=useState(1); // 1: date, 2: time, 3: details, 4: done
+  const [selDate,setSelDate]=useState(null);
+  const [selSlot,setSelSlot]=useState(null);
+  const [taken,setTaken]=useState([]);
+  const [guest,setGuest]=useState({name:"",email:"",note:""});
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+  const duration=host.booking_duration||30;
+  const hours=host.booking_hours||DEFAULT_HOURS;
+
+  // Next 14 days that have any availability
+  const days=[];
+  for(let i=0;i<14;i++){
+    const d=new Date(); d.setDate(d.getDate()+i); d.setHours(0,0,0,0);
+    const key=DAY_KEYS[d.getDay()];
+    if(hours[key]?.on) days.push(d);
+  }
+
+  useEffect(()=>{
+    // Load existing bookings for the next 15 days to block taken slots
+    const from=new Date(); from.setHours(0,0,0,0);
+    const to=new Date(); to.setDate(to.getDate()+15);
+    supabase.from("bookings").select("start_time,end_time").eq("host_id",host.id).neq("status","cancelled")
+      .gte("start_time",from.toISOString()).lte("start_time",to.toISOString())
+      .then(({data})=>setTaken(data||[])).catch(()=>setTaken([]));
+  },[host.id]);
+
+  const slots=selDate?computeSlots(selDate,hours,duration,taken):[];
+
+  async function confirm(){
+    setErr("");
+    if(!guest.name.trim()||!guest.email.trim().match(/^\S+@\S+\.\S+$/)){ setErr("Please enter your name and a valid email"); return; }
+    setSaving(true);
+    try {
+      const end=new Date(selSlot.getTime()+duration*60000);
+      const {error}=await supabase.from("bookings").insert({
+        host_id:host.id, guest_name:guest.name, guest_email:guest.email, guest_note:guest.note,
+        start_time:selSlot.toISOString(), end_time:end.toISOString(), status:"confirmed",
+      });
+      if(error) throw error;
+      // Emails: host + guest (best-effort)
+      const when=`${fmtDateNice(selSlot)} at ${fmtTime12(`${selSlot.getHours()}:${String(selSlot.getMinutes()).padStart(2,"0")}`)}`;
+      if(host.email) sendEmail("new_booking", host.email, { guestName:guest.name, when, note:guest.note });
+      sendEmail("booking_confirmed", guest.email, { hostName:host.name, when, duration });
+      setStep(4);
+    } catch(e){ setErr(e.message||"Booking failed — please try again"); }
+    setSaving(false);
+  }
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      className="fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
+        className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl flex flex-col" style={{background:"#0f1320",border:`1px solid ${BORDER}`,maxHeight:"88vh"}}>
+        {/* Header */}
+        <div className="p-5 pb-4 flex items-center gap-3" style={{borderBottom:`1px solid ${BORDER}`}}>
+          <Av name={host.name} url={host.avatar_url} color={pal(host.id)} size="md" ring/>
+          <div className="flex-1 min-w-0">
+            <div className="text-white font-bold truncate">Book with {host.name}</div>
+            <div className="text-white/45 text-xs">{duration} min meeting · Times in AET</div>
+          </div>
+          <button onClick={onClose} className="text-white/40 text-xl px-2">✕</button>
+        </div>
+
+        <div className="p-5 overflow-y-auto flex-1">
+          {step===1&&(
+            <div className="space-y-2">
+              <div className="text-white/50 text-xs uppercase tracking-wider mb-3">Select a day</div>
+              {days.length===0&&<div className="text-white/40 text-sm text-center py-6">No availability set</div>}
+              {days.map(d=>(
+                <button key={d.toISOString()} onClick={()=>{setSelDate(d);setStep(2);}}
+                  className="w-full text-left px-4 py-3.5 rounded-2xl text-white text-sm font-medium transition-colors hover:bg-white/10"
+                  style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
+                  {fmtDateNice(d)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step===2&&(
+            <div>
+              <button onClick={()=>setStep(1)} className="text-purple-300 text-xs mb-3">← {fmtDateNice(selDate)}</button>
+              <div className="text-white/50 text-xs uppercase tracking-wider mb-3">Select a time</div>
+              {slots.length===0&&<div className="text-white/40 text-sm text-center py-6">No free times this day — try another day</div>}
+              <div className="grid grid-cols-3 gap-2">
+                {slots.map(s=>(
+                  <button key={s.toISOString()} onClick={()=>{setSelSlot(s);setStep(3);}}
+                    className="py-2.5 rounded-xl text-sm font-semibold text-white transition-colors hover:bg-white/15"
+                    style={{background:"rgba(124,111,224,0.15)",border:"1px solid rgba(124,111,224,0.4)"}}>
+                    {fmtTime12(`${s.getHours()}:${String(s.getMinutes()).padStart(2,"0")}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {step===3&&(
+            <div className="space-y-3">
+              <button onClick={()=>setStep(2)} className="text-purple-300 text-xs">← Back</button>
+              <div className="p-3 rounded-2xl text-sm text-white/80" style={{background:"rgba(124,111,224,0.12)",border:"1px solid rgba(124,111,224,0.3)"}}>
+                📅 {fmtDateNice(selSlot)} · {fmtTime12(`${selSlot.getHours()}:${String(selSlot.getMinutes()).padStart(2,"0")}`)} ({duration} min)
+              </div>
+              <input value={guest.name} onChange={e=>setGuest(g=>({...g,name:e.target.value}))} placeholder="Your name *"
+                className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              <input value={guest.email} onChange={e=>setGuest(g=>({...g,email:e.target.value}))} placeholder="Your email *" type="email"
+                className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              <textarea value={guest.note} onChange={e=>setGuest(g=>({...g,note:e.target.value}))} placeholder="What would you like to discuss? (optional)" rows={3}
+                className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none resize-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              {err&&<div className="text-red-400 text-xs">{err}</div>}
+              <button onClick={confirm} disabled={saving}
+                className="w-full py-3.5 rounded-2xl text-white font-bold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",opacity:saving?0.6:1}}>
+                {saving?"Booking…":"Confirm booking"}
+              </button>
+            </div>
+          )}
+
+          {step===4&&(
+            <div className="text-center py-8">
+              <div className="text-5xl mb-4">✅</div>
+              <div className="text-white font-bold text-xl mb-2">You're booked!</div>
+              <div className="text-white/60 text-sm mb-1">{fmtDateNice(selSlot)} · {fmtTime12(`${selSlot.getHours()}:${String(selSlot.getMinutes()).padStart(2,"0")}`)}</div>
+              <div className="text-white/40 text-xs mb-6">A confirmation has been emailed to you. {host.name} has been notified.</div>
+              <button onClick={onClose} className="px-8 py-3 rounded-2xl text-white font-semibold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>Done</button>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function BusinessCardPage({ userId }) {
   const [p, setP] = useState(undefined);
   const [copied, setCopied] = useState(false);
   const [views, setViews] = useState(null);
   const [showExchange, setShowExchange] = useState(false);
+  const [showBooking, setShowBooking] = useState(false);
   const [exchange, setExchange] = useState({name:"",email:"",mobile:"",note:""});
   const [exchangeSent, setExchangeSent] = useState(false);
   const cardUrl = `${window.location.origin}${window.location.pathname}?card=${userId}`;
@@ -3043,7 +3334,10 @@ function BusinessCardPage({ userId }) {
             </div>
 
             {/* Save contact */}
-            <button onClick={saveContact} className="w-full py-3 rounded-2xl text-white font-semibold" style={{background:brandGrad}}>💾 Save to Contacts</button>
+            {p.booking_enabled&&(
+              <button onClick={()=>setShowBooking(true)} className="w-full py-3 rounded-2xl text-white font-bold" style={{background:brandGrad,boxShadow:`0 8px 24px ${brandHex}55`}}>📅 Book a meeting</button>
+            )}
+            <button onClick={saveContact} className="w-full py-3 rounded-2xl text-white font-semibold" style={{background:p.booking_enabled?"rgba(255,255,255,0.08)":brandGrad,border:p.booking_enabled?`1px solid ${BORDER}`:"none"}}>💾 Save to Contacts</button>
 
             {/* Two-way: share details back */}
             <button onClick={()=>setShowExchange(true)} className="w-full py-3 rounded-2xl text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white"}}>
@@ -3082,6 +3376,7 @@ function BusinessCardPage({ userId }) {
       </div>
 
       {/* Contact exchange modal */}
+      <AnimatePresence>{showBooking&&<BookingModal key="booking" host={p} onClose={()=>setShowBooking(false)}/>}</AnimatePresence>
       <AnimatePresence>{showExchange&&(
         <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
           className="fixed inset-0 z-[90] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4"

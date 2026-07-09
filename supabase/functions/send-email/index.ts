@@ -95,6 +95,21 @@ function buildEmail(type: string, data: any): { subject: string; html: string } 
         html: wrap("You have a new message",
           `<strong>${data.fromName || "Someone"}</strong> sent you a message in ABAA Community.`,
           cta("Read & reply", "")) };
+    case "new_booking":
+      return { subject: `📅 New booking: ${data.guestName || "Someone"} — ${data.when || ""}`,
+        html: wrap("You have a new meeting booked",
+          `<strong>${data.guestName || "Someone"}</strong> booked a meeting with you for <strong>${data.when || "an upcoming time"}</strong>.${data.note ? `<br><br>Their note: "${data.note}"` : ""}<br><br>You can manage your bookings in your profile.`,
+          cta("View bookings", "")) };
+    case "booking_confirmed":
+      return { subject: `✅ Booking confirmed — ${data.when || ""}`,
+        html: wrap("Your meeting is booked!",
+          `Your <strong>${data.duration || 30} minute</strong> meeting with <strong>${data.hostName || "your host"}</strong> is confirmed for <strong>${data.when || "the selected time"}</strong> (Australian Eastern Time).`,
+          cta("Visit ABAA Community", "")) };
+    case "booking_cancelled":
+      return { subject: `Booking cancelled — ${data.when || ""}`,
+        html: wrap("Your meeting was cancelled",
+          `Unfortunately your meeting scheduled for <strong>${data.when || "the selected time"}</strong> has been cancelled by the host. You're welcome to book another time.`,
+          cta("Book again", "")) };
     default:
       return { subject: "ABAA Community", html: wrap("Notification", data.message || "You have an update.") };
   }
