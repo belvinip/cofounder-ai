@@ -100,19 +100,49 @@ function buildEmail(type: string, data: any): { subject: string; html: string } 
         html: wrap("You have a new meeting booked",
           `<strong>${data.guestName || "Someone"}</strong> booked a meeting with you for <strong>${data.when || "an upcoming time"}</strong>.${data.note ? `<br><br>Their note: "${data.note}"` : ""}<br><br>You can manage your bookings in your profile.`,
           cta("View bookings", "")) };
-    case "booking_confirmed":
-      return { subject: `✅ Booking confirmed — ${data.when || ""}`,
-        html: wrap("Your meeting is booked!",
-          `Your <strong>${data.duration || 30} minute</strong> meeting with <strong>${data.hostName || "your host"}</strong> is confirmed for <strong>${data.when || "the selected time"}</strong> (Australian Eastern Time).`,
+    case "booking_request":
+      return { subject: `📅 New meeting request: ${data.guestName || "Someone"} — ${data.when || ""}`,
+        html: wrap("New meeting request",
+          `<strong>${data.guestName || "Someone"}</strong> requested a meeting with you for <strong>${data.when || "an upcoming time"}</strong>.${data.note ? `<br><br>Their note: "${data.note}"` : ""}<br><br>Open your profile to <strong>accept or decline</strong>. Once you accept, you'll both get the video call link.`,
+          cta("Review request", "")) };
+    case "booking_submitted":
+      return { subject: `Meeting request sent — ${data.when || ""}`,
+        html: wrap("Your request was sent",
+          `Your meeting request to <strong>${data.hostName || "your host"}</strong> for <strong>${data.when || "the selected time"}</strong> has been sent. You'll receive a confirmation with a video call link once they accept.`,
           cta("Visit ABAA Community", "")) };
+    case "booking_accepted":
+      return { subject: `✅ Meeting confirmed — ${data.when || ""}`,
+        html: wrap("Your meeting is confirmed! 🎉",
+          `Your meeting with <strong>${data.hostName || ""}</strong> is confirmed for <strong>${data.when || "the selected time"}</strong> (Australian Eastern Time).<br><br>🎥 <strong>Video call link:</strong><br><a href="${data.link || APP_URL}" style="color:#a78bfa;">${data.link || ""}</a><br><br>Just click the link at your meeting time to join. A calendar invite is attached.`,
+          data.link ? { label:"🎥 Join the video call", url:data.link } : cta("Visit ABAA Community","")) };
+    case "booking_declined":
+      return { subject: `Meeting request declined — ${data.when || ""}`,
+        html: wrap("Meeting request declined",
+          `Unfortunately <strong>${data.hostName || "the host"}</strong> couldn't accept your meeting request for <strong>${data.when || "the selected time"}</strong>. You're welcome to book another time.`,
+          cta("Book another time", "")) };
     case "booking_cancelled":
-      return { subject: `Booking cancelled — ${data.when || ""}`,
+      return { subject: `Meeting cancelled — ${data.when || ""}`,
         html: wrap("Your meeting was cancelled",
-          `Unfortunately your meeting scheduled for <strong>${data.when || "the selected time"}</strong> has been cancelled by the host. You're welcome to book another time.`,
+          `Unfortunately your meeting scheduled for <strong>${data.when || "the selected time"}</strong> has been cancelled by ${data.hostName || "the host"}. You're welcome to book another time.`,
           cta("Book again", "")) };
     default:
       return { subject: "ABAA Community", html: wrap("Notification", data.message || "You have an update.") };
   }
+}
+
+// Build a minimal .ics calendar invite (works with Google/Apple/Outlook)
+function buildICS(data: any): string | null {
+  if (!data.startISO || !data.endISO) return null;
+  const dt = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g,"").split(".")[0]+"Z";
+  const uid = `${Date.now()}@abaa.au`;
+  return [
+    "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//ABAA//Booking//EN","METHOD:REQUEST","BEGIN:VEVENT",
+    `UID:${uid}`,`DTSTAMP:${dt(new Date().toISOString())}`,`DTSTART:${dt(data.startISO)}`,`DTEND:${dt(data.endISO)}`,
+    `SUMMARY:Meeting with ${data.hostName || "ABAA member"}`,
+    `DESCRIPTION:Video call: ${data.link || ""}`,
+    data.link ? `LOCATION:${data.link}` : "LOCATION:Online",
+    "STATUS:CONFIRMED","END:VEVENT","END:VCALENDAR",
+  ].join("\r\n");
 }
 
 Deno.serve(async (req) => {
@@ -123,10 +153,19 @@ Deno.serve(async (req) => {
 
     const { subject, html } = buildEmail(type, data || {});
 
+    const body: any = { from: FROM, to: [to], subject, html };
+    // Attach a calendar invite for confirmed meetings
+    if (type === "booking_accepted") {
+      const ics = buildICS(data || {});
+      if (ics) {
+        body.attachments = [{ filename: "meeting.ics", content: btoa(ics) }];
+      }
+    }
+
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM, to: [to], subject, html }),
+      body: JSON.stringify(body),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || "Resend error");

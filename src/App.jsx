@@ -2278,30 +2278,52 @@ function BookingSettings({ form, setForm }) {
   );
 }
 
-function MyBookings({ user, showToast }) {
+function MyBookings({ user, profile, showToast }) {
   const [bookings,setBookings]=useState([]);
-  const [open,setOpen]=useState(false);
+  const [open,setOpen]=useState(true);
   async function load(){
     if(!user) return;
-    const {data}=await supabase.from("bookings").select("*").eq("host_id",user.id).neq("status","cancelled")
+    const {data}=await supabase.from("bookings").select("*").eq("host_id",user.id).neq("status","cancelled").neq("status","declined")
       .gte("start_time",new Date().toISOString()).order("start_time");
     setBookings(data||[]);
   }
   useEffect(()=>{ load(); },[user]);
-  async function cancel(b){
-    if(!confirm(`Cancel the booking with ${b.guest_name}?`)) return;
-    await supabase.from("bookings").update({status:"cancelled"}).eq("id",b.id);
-    sendEmail("booking_cancelled", b.guest_email, { hostName:"", when:`${fmtDateNice(new Date(b.start_time))} at ${fmtTime12(`${new Date(b.start_time).getHours()}:${String(new Date(b.start_time).getMinutes()).padStart(2,"0")}`)}` });
-    showToast("Booking cancelled");
+
+  function whenStr(b){ const s=new Date(b.start_time); return `${fmtDateNice(s)} at ${fmtTime12(`${s.getHours()}:${String(s.getMinutes()).padStart(2,"0")}`)}`; }
+
+  async function accept(b){
+    await supabase.from("bookings").update({status:"confirmed"}).eq("id",b.id);
+    // Send both parties the confirmation + video link
+    const dur=Math.round((new Date(b.end_time)-new Date(b.start_time))/60000);
+    const icsData={ when:whenStr(b), link:b.meeting_link, duration:dur, startISO:b.start_time, endISO:b.end_time };
+    if(b.guest_email) sendEmail("booking_accepted", b.guest_email, { ...icsData, hostName:profile?.name||"your host" });
+    if(user.email) sendEmail("booking_accepted", user.email, { ...icsData, hostName:b.guest_name });
+    showToast("Meeting accepted — video link sent to both of you ✓");
     load();
   }
+  async function decline(b){
+    if(!confirm(`Decline the meeting request from ${b.guest_name}?`)) return;
+    await supabase.from("bookings").update({status:"declined"}).eq("id",b.id);
+    if(b.guest_email) sendEmail("booking_declined", b.guest_email, { hostName:profile?.name||"your host", when:whenStr(b) });
+    showToast("Request declined");
+    load();
+  }
+  async function cancel(b){
+    if(!confirm(`Cancel the meeting with ${b.guest_name}?`)) return;
+    await supabase.from("bookings").update({status:"cancelled"}).eq("id",b.id);
+    if(b.guest_email) sendEmail("booking_cancelled", b.guest_email, { hostName:profile?.name||"your host", when:whenStr(b) });
+    showToast("Meeting cancelled");
+    load();
+  }
+
   if(bookings.length===0) return null;
+  const pending=bookings.filter(b=>b.status==="pending");
   return (
     <Card className="p-4">
       <button onClick={()=>setOpen(o=>!o)} className="w-full flex items-center justify-between">
-        <div className="text-left">
-          <div className="text-white font-semibold text-sm">📅 Upcoming bookings ({bookings.length})</div>
-          <div className="text-white/40 text-xs">Meetings people booked with you</div>
+        <div className="text-left flex items-center gap-2">
+          <div className="text-white font-semibold text-sm">📅 Meetings ({bookings.length})</div>
+          {pending.length>0&&<span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{background:"rgba(245,158,11,0.2)",color:"#fbbf24"}}>{pending.length} new</span>}
         </div>
         <span className="text-white/40">{open?"▾":"▸"}</span>
       </button>
@@ -2309,13 +2331,27 @@ function MyBookings({ user, showToast }) {
         <div className="space-y-2 mt-3">
           {bookings.map(b=>{
             const s=new Date(b.start_time);
+            const isPending=b.status==="pending";
             return (
-              <div key={b.id} className="p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
-                <div className="text-white text-sm font-semibold">{b.guest_name}</div>
+              <div key={b.id} className="p-3 rounded-2xl" style={{background:isPending?"rgba(245,158,11,0.08)":"rgba(255,255,255,0.04)",border:isPending?"1px solid rgba(245,158,11,0.3)":`1px solid ${BORDER}`}}>
+                <div className="flex items-center justify-between">
+                  <div className="text-white text-sm font-semibold">{b.guest_name}</div>
+                  {isPending?<span className="text-amber-400 text-xs">Awaiting your response</span>:<span className="text-emerald-400 text-xs">✓ Confirmed</span>}
+                </div>
                 <div className="text-purple-300 text-xs mt-0.5">{fmtDateNice(s)} · {fmtTime12(`${s.getHours()}:${String(s.getMinutes()).padStart(2,"0")}`)}</div>
                 <div className="text-white/50 text-xs">{b.guest_email}</div>
                 {b.guest_note&&<div className="text-white/40 text-xs mt-1 italic">"{b.guest_note}"</div>}
-                <button onClick={()=>cancel(b)} className="text-red-400/70 text-xs mt-2">✕ Cancel booking</button>
+                {isPending?(
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={()=>accept(b)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>✓ Accept</button>
+                    <button onClick={()=>decline(b)} className="flex-1 py-2 rounded-xl text-xs font-semibold text-white/60" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>Decline</button>
+                  </div>
+                ):(
+                  <div className="flex items-center gap-3 mt-2">
+                    {b.meeting_link&&<a href={b.meeting_link} target="_blank" rel="noreferrer" className="text-xs font-semibold" style={{color:"#a78bfa"}}>🎥 Join video call</a>}
+                    <button onClick={()=>cancel(b)} className="text-red-400/70 text-xs">✕ Cancel</button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -2569,7 +2605,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
       <BookingSettings form={form} setForm={setForm}/>
 
       {/* Upcoming bookings on me */}
-      <MyBookings user={user} showToast={showToast}/>
+      <MyBookings user={user} profile={profile} showToast={showToast}/>
 
       {/* Contacts captured from your card */}
       <CardContacts user={user}/>
@@ -3075,21 +3111,35 @@ function BookingModal({ host, onClose }) {
 
   const slots=selDate?computeSlots(selDate,hours,duration,taken):[];
 
+  const [me,setMe]=useState(undefined);
+  useEffect(()=>{ supabase.auth.getUser().then(({data})=>setMe(data?.user||null)); },[]);
+
   async function confirm(){
     setErr("");
-    if(!guest.name.trim()||!guest.email.trim().match(/^\S+@\S+\.\S+$/)){ setErr("Please enter your name and a valid email"); return; }
     setSaving(true);
     try {
+      // Require sign-in to finalise — captures the guest as a registered user
+      const {data:{user:current}}=await supabase.auth.getUser();
+      if(!current){
+        // Kick off Google sign-in; after redirect they return to this card and can re-book
+        await supabase.auth.signInWithOAuth({ provider:"google", options:{ redirectTo: window.location.href } });
+        return;
+      }
+      if(current.id===host.id){ setErr("You can't book a meeting with yourself"); setSaving(false); return; }
       const end=new Date(selSlot.getTime()+duration*60000);
+      // Unique Jitsi video room for this meeting
+      const room=`ABAA-${host.id.slice(0,6)}-${Date.now().toString(36)}`;
+      const meetingLink=`https://meet.jit.si/${room}`;
+      const gName=current.user_metadata?.full_name||current.email?.split("@")[0]||"Member";
       const {error}=await supabase.from("bookings").insert({
-        host_id:host.id, guest_name:guest.name, guest_email:guest.email, guest_note:guest.note,
-        start_time:selSlot.toISOString(), end_time:end.toISOString(), status:"confirmed",
+        host_id:host.id, guest_id:current.id, guest_name:gName, guest_email:current.email, guest_note:guest.note,
+        start_time:selSlot.toISOString(), end_time:end.toISOString(), status:"pending", meeting_link:meetingLink,
       });
       if(error) throw error;
-      // Emails: host + guest (best-effort)
+      // Notify host of a booking REQUEST awaiting their acceptance
       const when=`${fmtDateNice(selSlot)} at ${fmtTime12(`${selSlot.getHours()}:${String(selSlot.getMinutes()).padStart(2,"0")}`)}`;
-      if(host.email) sendEmail("new_booking", host.email, { guestName:guest.name, when, note:guest.note });
-      sendEmail("booking_confirmed", guest.email, { hostName:host.name, when, duration });
+      if(host.email) sendEmail("booking_request", host.email, { guestName:gName, when, note:guest.note });
+      sendEmail("booking_submitted", current.email, { hostName:host.name, when, duration });
       setStep(4);
     } catch(e){ setErr(e.message||"Booking failed — please try again"); }
     setSaving(false);
@@ -3149,26 +3199,39 @@ function BookingModal({ host, onClose }) {
               <div className="p-3 rounded-2xl text-sm text-white/80" style={{background:"rgba(124,111,224,0.12)",border:"1px solid rgba(124,111,224,0.3)"}}>
                 📅 {fmtDateNice(selSlot)} · {fmtTime12(`${selSlot.getHours()}:${String(selSlot.getMinutes()).padStart(2,"0")}`)} ({duration} min)
               </div>
-              <input value={guest.name} onChange={e=>setGuest(g=>({...g,name:e.target.value}))} placeholder="Your name *"
-                className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
-              <input value={guest.email} onChange={e=>setGuest(g=>({...g,email:e.target.value}))} placeholder="Your email *" type="email"
-                className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
-              <textarea value={guest.note} onChange={e=>setGuest(g=>({...g,note:e.target.value}))} placeholder="What would you like to discuss? (optional)" rows={3}
-                className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none resize-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
-              {err&&<div className="text-red-400 text-xs">{err}</div>}
-              <button onClick={confirm} disabled={saving}
-                className="w-full py-3.5 rounded-2xl text-white font-bold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",opacity:saving?0.6:1}}>
-                {saving?"Booking…":"Confirm booking"}
-              </button>
+              {me===null?(
+                <div className="text-center py-2">
+                  <div className="text-white/70 text-sm mb-1">One quick step to book</div>
+                  <div className="text-white/40 text-xs mb-4">Sign in so {host.name} can confirm your meeting and send you the video link.</div>
+                  <textarea value={guest.note} onChange={e=>setGuest(g=>({...g,note:e.target.value}))} placeholder="What would you like to discuss? (optional)" rows={2}
+                    className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none resize-none mb-3" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                  {err&&<div className="text-red-400 text-xs mb-2">{err}</div>}
+                  <button onClick={confirm} disabled={saving}
+                    className="w-full py-3.5 rounded-2xl text-white font-bold flex items-center justify-center gap-2" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",opacity:saving?0.6:1}}>
+                    <span style={{background:"#fff",borderRadius:"3px",padding:"2px 5px",color:"#444",fontSize:"12px",fontWeight:"bold"}}>G</span>
+                    {saving?"…":"Sign in with Google to book"}
+                  </button>
+                </div>
+              ):(
+                <>
+                  <textarea value={guest.note} onChange={e=>setGuest(g=>({...g,note:e.target.value}))} placeholder="What would you like to discuss? (optional)" rows={3}
+                    className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none resize-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                  {err&&<div className="text-red-400 text-xs">{err}</div>}
+                  <button onClick={confirm} disabled={saving}
+                    className="w-full py-3.5 rounded-2xl text-white font-bold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",opacity:saving?0.6:1}}>
+                    {saving?"Sending request…":"Request this meeting"}
+                  </button>
+                </>
+              )}
             </div>
           )}
 
           {step===4&&(
             <div className="text-center py-8">
-              <div className="text-5xl mb-4">✅</div>
-              <div className="text-white font-bold text-xl mb-2">You're booked!</div>
+              <div className="text-5xl mb-4">📨</div>
+              <div className="text-white font-bold text-xl mb-2">Request sent!</div>
               <div className="text-white/60 text-sm mb-1">{fmtDateNice(selSlot)} · {fmtTime12(`${selSlot.getHours()}:${String(selSlot.getMinutes()).padStart(2,"0")}`)}</div>
-              <div className="text-white/40 text-xs mb-6">A confirmation has been emailed to you. {host.name} has been notified.</div>
+              <div className="text-white/40 text-xs mb-6">{host.name} will confirm your meeting. You'll get an email with the video call link once it's accepted.</div>
               <button onClick={onClose} className="px-8 py-3 rounded-2xl text-white font-semibold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>Done</button>
             </div>
           )}
