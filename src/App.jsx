@@ -524,8 +524,12 @@ function ChatModal({ matchId, other, me, myProfile, onClose }) {
         {/* Header */}
         <div className="flex-shrink-0 flex items-center gap-3 p-4 border-b" style={{borderColor:BORDER}}>
           <Av name={other?.name} url={other?.avatar_url} color={oc} size="sm" ring/>
-          <div className="flex-1 min-w-0"><div className="text-white font-bold truncate">{other?.name}</div><div className="text-emerald-400 text-xs">● Connected{projectContext?` · ${projectContext}`:""}</div></div>
-          <button onClick={shareContactCard} title="Share my contact card" className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa",border:"1px solid rgba(124,111,224,0.3)"}}>📇 Card</button>
+          <div className="flex-1 min-w-0">
+            <div className="text-white font-bold truncate">{other?.name}</div>
+            <div className="text-emerald-400 text-xs">● Connected{projectContext?` · ${projectContext}`:""}</div>
+          </div>
+          {other?.id&&<a href={`${window.location.origin}${window.location.pathname}?card=${other.id}`} target="_blank" rel="noreferrer" title="View their digital card" className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.7)",border:`1px solid ${BORDER}`}}>💳</a>}
+          <button onClick={shareContactCard} title="Share my contact card" className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa",border:"1px solid rgba(124,111,224,0.3)"}}>📇</button>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">✕</button>
         </div>
 
@@ -804,6 +808,14 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
             </div>
           ) : (
             <PrimaryBtn onClick={()=>{onRequest(p);onClose();}} className="w-full">🤝 Send Partnership Request</PrimaryBtn>
+          )}
+
+          {/* View digital business card — available to connected members */}
+          {isAccepted&&!isDemo&&(
+            <a href={`${window.location.origin}${window.location.pathname}?card=${p.id}`} target="_blank" rel="noreferrer"
+              className="block w-full text-center py-3 rounded-2xl text-white font-semibold" style={{background:"rgba(255,255,255,0.08)",border:`1px solid ${BORDER}`}}>
+              💳 View {p.name?.split(" ")[0]||"their"}'s Digital Card
+            </a>
           )}
 
           {/* Book a meeting (if host enabled bookings) */}
