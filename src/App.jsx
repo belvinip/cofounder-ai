@@ -3150,7 +3150,7 @@ function BookingModal({ host, onClose }) {
       if(error) throw error;
       // Notify host of a booking REQUEST awaiting their acceptance
       const when=`${fmtDateNice(selSlot)} at ${fmtTime12(`${selSlot.getHours()}:${String(selSlot.getMinutes()).padStart(2,"0")}`)}`;
-      if(host.email) sendEmail("booking_request", host.email, { guestName:gName, when, note:guest.note });
+      if(host.email) sendEmail("booking_request", host.email, { guestName:gName, guestEmail:current.email, when, note:guest.note, duration });
       sendEmail("booking_submitted", current.email, { hostName:host.name, when, duration });
       setStep(4);
     } catch(e){ setErr(e.message||"Booking failed — please try again"); }
@@ -3498,7 +3498,11 @@ export default function App() {
 
   const [session,setSession]=useState(undefined);
   const [profile,setProfile]=useState(null);
-  const [tab,setTab]=useState("events");
+  const [tab,setTab]=useState(()=>{
+    // Deep-link from booking emails: ?bookings=1 opens the Profile tab (where bookings live)
+    try { if(new URLSearchParams(window.location.search).get("bookings")) return "profile"; } catch(e){}
+    return "events";
+  });
   const [notif,setNotif]=useState({partner:0,project:0,events:0,messages:0});
   const processedUserRef = useRef(null);
   const [toast,setToast]=useState(null);

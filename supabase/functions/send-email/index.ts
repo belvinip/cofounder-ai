@@ -101,29 +101,49 @@ function buildEmail(type: string, data: any): { subject: string; html: string } 
           `<strong>${data.guestName || "Someone"}</strong> booked a meeting with you for <strong>${data.when || "an upcoming time"}</strong>.${data.note ? `<br><br>Their note: "${data.note}"` : ""}<br><br>You can manage your bookings in your profile.`,
           cta("View bookings", "")) };
     case "booking_request":
-      return { subject: `📅 New meeting request: ${data.guestName || "Someone"} — ${data.when || ""}`,
-        html: wrap("New meeting request",
-          `<strong>${data.guestName || "Someone"}</strong> requested a meeting with you for <strong>${data.when || "an upcoming time"}</strong>.${data.note ? `<br><br>Their note: "${data.note}"` : ""}<br><br>Open your profile to <strong>accept or decline</strong>. Once you accept, you'll both get the video call link.`,
-          cta("Review request", "")) };
+      return { subject: `📅 Meeting request from ${data.guestName || "someone"} — ${data.when || ""}`,
+        html: wrap("You have a new meeting request",
+          `<strong>${data.guestName || "Someone"}</strong> would like to meet with you.
+           <div style="background:#0d1120;border:1px solid #232a42;border-radius:14px;padding:16px;margin:18px 0;">
+             <div style="color:#fff;font-size:15px;margin-bottom:8px;">📅 <strong>${data.when || "An upcoming time"}</strong></div>
+             <div style="color:#8b93ab;font-size:14px;margin-bottom:4px;">⏱️ ${data.duration || 30} minutes</div>
+             <div style="color:#8b93ab;font-size:14px;margin-bottom:4px;">👤 ${data.guestName || ""}</div>
+             ${data.guestEmail ? `<div style="color:#8b93ab;font-size:14px;">✉️ ${data.guestEmail}</div>` : ""}
+             ${data.note ? `<div style="color:#b8c0d8;font-size:14px;margin-top:10px;padding-top:10px;border-top:1px solid #232a42;"><em>"${data.note}"</em></div>` : ""}
+           </div>
+           Tap below to <strong>accept or decline</strong>. Once you accept, you'll both receive the video call link and a calendar invite.`,
+          { label: "✓ Review & Accept Booking", url: `${APP_URL}?bookings=1` }) };
     case "booking_submitted":
-      return { subject: `Meeting request sent — ${data.when || ""}`,
-        html: wrap("Your request was sent",
-          `Your meeting request to <strong>${data.hostName || "your host"}</strong> for <strong>${data.when || "the selected time"}</strong> has been sent. You'll receive a confirmation with a video call link once they accept.`,
+      return { subject: `Meeting request sent to ${data.hostName || "your host"} — ${data.when || ""}`,
+        html: wrap("Your meeting request was sent ✓",
+          `Your request has been sent to <strong>${data.hostName || "your host"}</strong>.
+           <div style="background:#0d1120;border:1px solid #232a42;border-radius:14px;padding:16px;margin:18px 0;">
+             <div style="color:#fff;font-size:15px;margin-bottom:8px;">📅 <strong>${data.when || "the selected time"}</strong></div>
+             <div style="color:#8b93ab;font-size:14px;">⏱️ ${data.duration || 30} minutes</div>
+           </div>
+           You'll get a confirmation email with the <strong>video call link</strong> and a calendar invite as soon as they accept.`,
           cta("Visit ABAA Community", "")) };
     case "booking_accepted":
       return { subject: `✅ Meeting confirmed — ${data.when || ""}`,
         html: wrap("Your meeting is confirmed! 🎉",
-          `Your meeting with <strong>${data.hostName || ""}</strong> is confirmed for <strong>${data.when || "the selected time"}</strong> (Australian Eastern Time).<br><br>🎥 <strong>Video call link:</strong><br><a href="${data.link || APP_URL}" style="color:#a78bfa;">${data.link || ""}</a><br><br>Just click the link at your meeting time to join. A calendar invite is attached.`,
-          data.link ? { label:"🎥 Join the video call", url:data.link } : cta("Visit ABAA Community","")) };
+          `Your meeting with <strong>${data.hostName || "your contact"}</strong> is locked in.
+           <div style="background:#0d1120;border:1px solid #232a42;border-radius:14px;padding:16px;margin:18px 0;">
+             <div style="color:#fff;font-size:15px;margin-bottom:8px;">📅 <strong>${data.when || "the selected time"}</strong></div>
+             <div style="color:#8b93ab;font-size:14px;margin-bottom:4px;">⏱️ ${data.duration || 30} minutes (Australian Eastern Time)</div>
+             ${data.link ? `<div style="color:#8b93ab;font-size:14px;">🎥 Video call ready</div>` : ""}
+           </div>
+           ${data.link ? `Click the button below at your meeting time to join the video room — no app or account needed.<br><br><span style="color:#8b93ab;font-size:13px;">Or paste this link: <a href="${data.link}" style="color:#a78bfa;">${data.link}</a></span>` : ""}
+           <br><br>📎 A calendar invite is attached — tap it to add this meeting to your calendar.`,
+          data.link ? { label:"🎥 Join the Video Call", url:data.link } : cta("Visit ABAA Community","")) };
     case "booking_declined":
       return { subject: `Meeting request declined — ${data.when || ""}`,
         html: wrap("Meeting request declined",
-          `Unfortunately <strong>${data.hostName || "the host"}</strong> couldn't accept your meeting request for <strong>${data.when || "the selected time"}</strong>. You're welcome to book another time.`,
+          `Unfortunately <strong>${data.hostName || "the host"}</strong> couldn't make <strong>${data.when || "the selected time"}</strong> work. You're welcome to pick another time.`,
           cta("Book another time", "")) };
     case "booking_cancelled":
       return { subject: `Meeting cancelled — ${data.when || ""}`,
         html: wrap("Your meeting was cancelled",
-          `Unfortunately your meeting scheduled for <strong>${data.when || "the selected time"}</strong> has been cancelled by ${data.hostName || "the host"}. You're welcome to book another time.`,
+          `Your meeting scheduled for <strong>${data.when || "the selected time"}</strong> has been cancelled by ${data.hostName || "the host"}. You're welcome to book another time.`,
           cta("Book again", "")) };
     default:
       return { subject: "ABAA Community", html: wrap("Notification", data.message || "You have an update.") };
