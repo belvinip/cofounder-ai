@@ -1422,7 +1422,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
   const now=new Date();
   const filtered = events.filter(ev=>{
     const q=search.toLowerCase();
-    const matchesSearch = !search || (ev.title||"").toLowerCase().includes(q)||(ev.description||"").toLowerCase().includes(q)||(ev.location||"").toLowerCase().includes(q);
+    const matchesSearch = !search || (ev.title||"").toLowerCase().includes(q)||(ev.description||"").toLowerCase().includes(q)||(ev.location||"").toLowerCase().includes(q)||(ev.industry_tags||[]).some(t=>String(t).toLowerCase().includes(q));
     const matchesState = !filterState || (ev.location||"").toUpperCase().includes(filterState);
     let matchesDate = true;
     if(filterDate){
@@ -1577,6 +1577,57 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
         )}
       </Card>
 
+      {/* ═══ DISCOVER: Browse by Category & City (Luma-style) ═══ */}
+      {(()=>{
+        const upcoming = events.filter(ev=>(isDemo(ev)||ev.is_approved!==false)&&isFuture(ev));
+        // Category counts from industry tags
+        const catMap = {};
+        upcoming.forEach(ev=>(ev.industry_tags||[]).forEach(t=>{ catMap[t]=(catMap[t]||0)+1; }));
+        const cats = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+        // City counts — take the suburb/city portion of the location
+        const cityMap = {};
+        upcoming.forEach(ev=>{
+          const parts=String(ev.location||"").split(",").map(s=>s.trim()).filter(Boolean);
+          const city = parts.length>1 ? parts[parts.length-1].replace(/\s+(VIC|NSW|QLD|WA|SA|TAS|ACT|NT)\b.*$/i,"").trim() || parts[parts.length-2] : parts[0];
+          if(city) cityMap[city]=(cityMap[city]||0)+1;
+        });
+        const cities = Object.entries(cityMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+        if(cats.length===0 && cities.length===0) return null;
+        const CAT_ICON = {DeepTech:"🧬",SaaS:"☁️",FinTech:"💳",Web3:"⛓️",EdTech:"🎓",Climate:"🌏",HealthTech:"🩺","E-commerce":"🛒",Consumer:"📱",PropTech:"🏠",AgriTech:"🌾",Wellness:"🧘",Community:"✨"};
+        const pill = (label,count,icon,onClick,active)=>(
+          <button key={label} onClick={onClick}
+            className="flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 rounded-2xl transition-all"
+            style={{background:active?"rgba(124,111,224,0.22)":"rgba(255,255,255,0.05)",
+                    border:active?"1px solid rgba(167,139,250,0.6)":`1px solid ${BORDER}`}}>
+            <span className="text-base">{icon}</span>
+            <span className="text-left">
+              <span className="block text-white text-xs font-semibold leading-tight">{label}</span>
+              <span className="block text-white/40 text-[10px] leading-tight">{count} Event{count===1?"":"s"}</span>
+            </span>
+          </button>
+        );
+        return (
+          <div className="space-y-4">
+            {cats.length>0&&(
+              <div>
+                <div className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-2">Browse by Category</div>
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{scrollbarWidth:"none"}}>
+                  {cats.map(([c,n])=>pill(c,n,CAT_ICON[c]||"🎯",()=>setSearch(search===c?"":c),search===c))}
+                </div>
+              </div>
+            )}
+            {cities.length>0&&(
+              <div>
+                <div className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-2">Explore Local Events</div>
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{scrollbarWidth:"none"}}>
+                  {cities.map(([c,n])=>pill(c,n,"📍",()=>setSearch(search===c?"":c),search===c))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Events List */}
       <div>
         {(()=>{
@@ -1718,7 +1769,42 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                   text="Future Events" count={futureEvents.length}/>
                 {futureEvents.length===0
                   ? <div className="text-white/30 text-sm text-center py-6">No upcoming events.</div>
-                  : <div className="space-y-4">{futureEvents.map(renderCard)}</div>}
+                  : (()=>{
+                      // Group by day, Luma-style timeline
+                      const groups=[];
+                      futureEvents.forEach(ev=>{
+                        const d=new Date(ev.event_date); d.setHours(0,0,0,0);
+                        const key=d.toISOString().slice(0,10);
+                        let g=groups.find(x=>x.key===key);
+                        if(!g){ g={key,date:d,items:[]}; groups.push(g); }
+                        g.items.push(ev);
+                      });
+                      const today=new Date(); today.setHours(0,0,0,0);
+                      const tomorrow=new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+                      const dayLabel=(d)=>{
+                        if(d.getTime()===today.getTime()) return "Today";
+                        if(d.getTime()===tomorrow.getTime()) return "Tomorrow";
+                        return d.toLocaleDateString("en-AU",{weekday:"long"});
+                      };
+                      let n=0;
+                      return (
+                        <div className="relative">
+                          {/* timeline rail */}
+                          <div className="absolute top-2 bottom-2" style={{left:"5px",width:"1px",background:BORDER}}/>
+                          {groups.map(g=>(
+                            <div key={g.key} className="relative pl-7 mb-6">
+                              {/* date dot */}
+                              <div className="absolute rounded-full" style={{left:"0px",top:"6px",width:"11px",height:"11px",background:"#0f1320",border:"2px solid rgba(167,139,250,0.8)"}}/>
+                              <div className="flex items-baseline gap-2 mb-3">
+                                <span className="text-white font-bold text-sm">{dayLabel(g.date)}</span>
+                                <span className="text-white/35 text-xs">{g.date.toLocaleDateString("en-AU",{day:"numeric",month:"short"})}</span>
+                              </div>
+                              <div className="space-y-4">{g.items.map(ev=>renderCard(ev,n++))}</div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
               </div>
 
               {/* PAST EVENTS */}
