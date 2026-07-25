@@ -93,39 +93,85 @@ const DEMO_PROFILES = [
 // ─── 30 Demo Events ───────────────────────────────────────────────────────────
 const _now = new Date();
 const fd = (days,h=10,m=0) => { const d=new Date(_now); d.setDate(d.getDate()-(days*11)-7); d.setHours(h,m,0,0); return d.toISOString(); };
+const ud = (days,h=10,m=0) => { const d=new Date(_now); d.setDate(d.getDate()+days); d.setHours(h,m,0,0); return d.toISOString(); };
 const pd = (days,h=18,m=0) => { const d=new Date(_now); d.setDate(d.getDate()-days); d.setHours(h,m,0,0); return d.toISOString(); };
 
+
+// ═══ LUMA-STYLE EVENT COVER THEMES ═══
+// Stored in cover_url as "theme:<id>" so no image hosting is needed.
+const COVER_THEMES = [
+  { id:"aurora",   grad:"linear-gradient(135deg,#7c6fe0,#a78bfa,#f0abfc)" },
+  { id:"sunset",   grad:"linear-gradient(135deg,#f97316,#ec4899,#8b5cf6)" },
+  { id:"ocean",    grad:"linear-gradient(135deg,#0ea5e9,#2563eb,#4f46e5)" },
+  { id:"forest",   grad:"linear-gradient(135deg,#10b981,#059669,#065f46)" },
+  { id:"ember",    grad:"linear-gradient(135deg,#ef4444,#f97316,#f59e0b)" },
+  { id:"midnight", grad:"linear-gradient(135deg,#1e293b,#334155,#7c6fe0)" },
+  { id:"candy",    grad:"linear-gradient(135deg,#ec4899,#f472b6,#fbbf24)" },
+  { id:"mint",     grad:"linear-gradient(135deg,#14b8a6,#22d3ee,#a7f3d0)" },
+  { id:"royal",    grad:"linear-gradient(135deg,#4c1d95,#7c3aed,#c084fc)" },
+  { id:"sand",     grad:"linear-gradient(135deg,#d97706,#fbbf24,#fef3c7)" },
+  { id:"slate",    grad:"linear-gradient(135deg,#0f172a,#475569,#94a3b8)" },
+  { id:"bloom",    grad:"linear-gradient(135deg,#be185d,#db2777,#f9a8d4)" },
+];
+const themeGrad = (v) => {
+  if(!v || !String(v).startsWith("theme:")) return null;
+  const t = COVER_THEMES.find(x=>x.id===String(v).slice(6));
+  return t ? t.grad : COVER_THEMES[0].grad;
+};
+// Deterministic fallback cover so every event looks designed
+const autoGrad = (seed="") => {
+  let h=0; for(let i=0;i<String(seed).length;i++) h=(h*31+String(seed).charCodeAt(i))>>>0;
+  return COVER_THEMES[h%COVER_THEMES.length].grad;
+};
+
+// Download an .ics calendar invite for an event (works with Google/Apple/Outlook)
+function downloadEventICS(ev){
+  const start = new Date(ev.event_date);
+  const end = new Date(start.getTime() + 2*60*60*1000);
+  const dt = d => d.toISOString().replace(/[-:]/g,"").split(".")[0]+"Z";
+  const esc = s => String(s||"").replace(/[\\;,]/g,m=>"\\"+m).replace(/\n/g,"\\n");
+  const ics = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//ABAA//Events//EN","BEGIN:VEVENT",
+    `UID:${ev.id}@abaa.au`,`DTSTAMP:${dt(new Date())}`,`DTSTART:${dt(start)}`,`DTEND:${dt(end)}`,
+    `SUMMARY:${esc(ev.title)}`,`DESCRIPTION:${esc(ev.description)}`,`LOCATION:${esc(ev.location)}`,
+    "END:VEVENT","END:VCALENDAR"].join("\r\n");
+  const blob = new Blob([ics],{type:"text/calendar;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${(ev.title||"event").replace(/[^a-z0-9]/gi,"-").toLowerCase()}.ics`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
 const DEMO_EVENTS = [
-  { id:"e1",  title:"AI Founders Breakfast",            description:"Casual morning meetup for founders building AI-first products. Share what you're working on over coffee and croissants.",          location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(2,8,30),  max_attendees:25,  industry_tags:["DeepTech","SaaS"],            creator:{name:"Alex Chen",        id:"d1"  }, attendee_count:8  },
-  { id:"e2",  title:"FinTech Demo Day",                 description:"10 early-stage fintech founders pitch to a room of angels and VCs. Network afterwards with top investors in the space.",           location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",            event_date:fd(4,14,0),  max_attendees:80,  industry_tags:["FinTech"],                    creator:{name:"Daniel Kim",       id:"d5"  }, attendee_count:42 },
-  { id:"e3",  title:"Web3 Builders Hackathon",          description:"48-hour hackathon building DeFi and NFT primitives on Ethereum. $10K in prizes. Teams of 2–4.",                                   location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",              event_date:fd(6,9,0),   max_attendees:120, industry_tags:["Web3"],                       creator:{name:"Sofia Russo",      id:"d4"  }, attendee_count:67 },
-  { id:"e4",  title:"EdTech Product Workshop",          description:"Hands-on workshop on building engaging learning experiences. Bring your laptop and a product idea.",                               location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                event_date:fd(3,16,0),  max_attendees:50,  industry_tags:["EdTech"],                     creator:{name:"Ethan Brooks",     id:"d17" }, attendee_count:29 },
-  { id:"e5",  title:"Climate Tech Pitch Night",         description:"Founders working on climate solutions pitch their ideas to a panel of impact investors. Q&A session follows.",                    location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(7,18,30), max_attendees:60,  industry_tags:["Climate"],                    creator:{name:"Amara Okonkwo",    id:"d7"  }, attendee_count:38 },
-  { id:"e6",  title:"SaaS Growth Masterclass",          description:"Deep dive into product-led growth strategies that worked for $10M+ ARR companies. Real data, real examples.",                    location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",     event_date:fd(5,10,0),  max_attendees:40,  industry_tags:["SaaS"],                       creator:{name:"Lena Kowalski",    id:"d22" }, attendee_count:31 },
-  { id:"e7",  title:"Founder Speed Dating",             description:"Find your co-founder in 90 minutes. 5-minute rounds with potential matches. Structured, efficient, and surprisingly fun.",        location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(8,18,0),  max_attendees:30,  industry_tags:["SaaS","FinTech","EdTech"],     creator:{name:"Marcus Webb",      id:"d3"  }, attendee_count:22 },
-  { id:"e8",  title:"HealthTech Investor Roundtable",   description:"Closed-door roundtable connecting HealthTech founders with 8 Series A investors. Application required.",                          location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",             event_date:fd(10,13,0), max_attendees:16,  industry_tags:["HealthTech"],                 creator:{name:"Tyler Washington", id:"d29" }, attendee_count:12 },
-  { id:"e9",  title:"Women in DeepTech Mixer",          description:"Monthly mixer celebrating women building frontier technology. Allies welcome. Great speakers, better networking.",                 location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(9,17,30), max_attendees:70,  industry_tags:["DeepTech","Climate"],         creator:{name:"Zara Ahmed",       id:"d18" }, attendee_count:45 },
-  { id:"e10", title:"Open Source Dev Meetup",           description:"Monthly gathering for open source contributors and founders. Lightning talks on tooling, infra, and developer experience.",       location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",            event_date:fd(11,18,0), max_attendees:45,  industry_tags:["SaaS","DeepTech"],            creator:{name:"Nina Volkov",      id:"d30" }, attendee_count:33 },
-  { id:"e11", title:"E-commerce Founders Lunch",        description:"Intimate lunch for founders in e-commerce and DTC. Share challenges, swap playbooks, and make genuine connections.",              location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",              event_date:fd(12,12,30),max_attendees:20,  industry_tags:["E-commerce"],                 creator:{name:"Nadia Petrov",     id:"d12" }, attendee_count:14 },
-  { id:"e12", title:"Mobile-First Product Summit",      description:"Full-day summit on building exceptional mobile products. Speakers from Duolingo, Spotify, and Calm.",                            location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126", event_date:fd(14,9,0),  max_attendees:200, industry_tags:["Consumer","EdTech"],          creator:{name:"Mei Yamamoto",     id:"d16" }, attendee_count:128},
-  { id:"e13", title:"Africa Tech Founder Circle",       description:"Monthly circle for African founders building pan-African or global companies. Peer support and investor intros.",                 location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                event_date:fd(5,17,0),  max_attendees:35,  industry_tags:["FinTech","E-commerce"],       creator:{name:"Aisha Diallo",     id:"d20" }, attendee_count:19 },
-  { id:"e14", title:"B2B SaaS Metrics Deep Dive",       description:"Workshop on the metrics that matter for B2B SaaS. NRR, CAC payback, magic number — with real benchmarks.",                      location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",         event_date:fd(6,15,0),  max_attendees:100, industry_tags:["SaaS"],                       creator:{name:"Sophie Laurent",   id:"d24" }, attendee_count:73 },
-  { id:"e15", title:"Hardware & IoT Builders Meetup",   description:"For founders building in the physical world. Demos, teardowns, and war stories from the supply chain trenches.",                 location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(15,11,0), max_attendees:40,  industry_tags:["DeepTech"],                   creator:{name:"Tom Blackwell",    id:"d11" }, attendee_count:26 },
-  { id:"e16", title:"MENA Startup Showcase",            description:"Showcase of the most exciting startups from the Middle East and North Africa. Gulf and London investors attending.",              location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                  event_date:fd(18,14,0), max_attendees:150, industry_tags:["FinTech","EdTech","Consumer"], creator:{name:"Zara Ahmed",       id:"d18" }, attendee_count:89 },
-  { id:"e17", title:"Privacy-First Product Talk",       description:"How to build products that respect user privacy without sacrificing growth. Case studies from Signal, Proton, and Brave.",       location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(3,19,0),  max_attendees:null,industry_tags:["SaaS","DeepTech"],            creator:{name:"Nina Volkov",      id:"d30" }, attendee_count:201},
-  { id:"e18", title:"Seed Funding Panel",               description:"5 seed investors break down what they look for. Bring your deck and get brutally honest feedback in small groups.",              location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",     event_date:fd(20,14,0), max_attendees:60,  industry_tags:["SaaS","FinTech","HealthTech"], creator:{name:"Oliver Grant",     id:"d19" }, attendee_count:47 },
-  { id:"e19", title:"Rust & Systems Programming Night", description:"Lightning talks on Rust in production, WebAssembly, and distributed systems. For engineers who love low-level.",                 location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",    event_date:fd(13,18,30),max_attendees:50,  industry_tags:["DeepTech","SaaS"],            creator:{name:"Nina Volkov",      id:"d30" }, attendee_count:34 },
-  { id:"e20", title:"Impact Investing Breakfast",       description:"Connecting impact-focused founders with patient capital. Focus on climate, health equity, and financial inclusion.",              location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",       event_date:fd(7,8,30),  max_attendees:30,  industry_tags:["Climate","HealthTech"],        creator:{name:"Amara Okonkwo",    id:"d7"  }, attendee_count:21 },
-  { id:"e21", title:"Design Systems Workshop",          description:"Hands-on workshop building a component library from scratch in Figma and React. Take home a production-ready design system.",    location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",      event_date:fd(9,10,0),  max_attendees:24,  industry_tags:["SaaS","Consumer"],            creator:{name:"Sofia Russo",      id:"d4"  }, attendee_count:18 },
-  { id:"e22", title:"LLM Application Builders Meetup",  description:"Monthly meetup for developers building on top of GPT, Claude, and Gemini. Show and tell, debugging sessions, best practices.",  location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",            event_date:fd(16,18,0), max_attendees:80,  industry_tags:["DeepTech","SaaS"],            creator:{name:"Lin Wei",          id:"d9"  }, attendee_count:62 },
-  { id:"e23", title:"Revenue Operations Summit",        description:"For RevOps leaders and founders wanting to build a world-class GTM machine. Tools, processes, and team structures.",              location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",        event_date:fd(21,9,0),  max_attendees:90,  industry_tags:["SaaS"],                       creator:{name:"Rachel Torres",    id:"d10" }, attendee_count:55 },
-  { id:"e24", title:"Nordic Founders Meetup",           description:"Gathering for Scandinavian founders and those building for Nordic markets. Saunas, great coffee, and genuine conversations.",    location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",           event_date:fd(25,17,0), max_attendees:55,  industry_tags:["Climate","SaaS"],             creator:{name:"Kai Andersen",     id:"d25" }, attendee_count:40 },
-  { id:"e25", title:"Consumer App Growth Workshop",     description:"Tactical workshop: push notifications, onboarding flows, virality loops, and retention strategies for consumer apps.",           location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                event_date:fd(4,11,0),  max_attendees:75,  industry_tags:["Consumer"],                   creator:{name:"Mei Yamamoto",     id:"d16" }, attendee_count:58 },
-  { id:"e26", title:"Pitch Perfect — Founder Bootcamp", description:"Two-day intensive bootcamp on nailing your investor pitch. Deck review, mock pitches, and coaching from ex-VCs.",               location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",     event_date:fd(28,9,0),  max_attendees:20,  industry_tags:["SaaS","FinTech","HealthTech"], creator:{name:"Oliver Grant",     id:"d19" }, attendee_count:15 },
-  { id:"e27", title:"Korea Tech Networking Night",      description:"For founders building in or for South Korea and the broader APAC market. Investors from SoftBank and Kakao Ventures.",          location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                  event_date:fd(11,18,30),max_attendees:100, industry_tags:["Consumer","DeepTech"],        creator:{name:"Hana Park",        id:"d28" }, attendee_count:76 },
-  { id:"e28", title:"HealthTech Regulatory Q&A",        description:"Expert panel on navigating FDA, CE Mark, and TGA approval for digital health products. Ask your burning compliance questions.",  location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",                event_date:fd(17,14,0), max_attendees:60,  industry_tags:["HealthTech"],                 creator:{name:"Isla MacGregor",   id:"d14" }, attendee_count:43 },
-  { id:"e29", title:"Startup Visa & Global Expansion",  description:"How to set up your company for global growth. Tax structures, visa options, EOR providers, and banking across borders.",        location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",      event_date:fd(22,10,0), max_attendees:45,  industry_tags:["SaaS","FinTech"],             creator:{name:"Jake Morrison",    id:"d8"  }, attendee_count:30 },
-  { id:"e30", title:"Founder Stories: The Hard Parts",  description:"Founders share the moments they almost quit — and what kept them going. Raw, unfiltered, deeply human conversations.",          location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC 3126",  event_date:pd(3,19,0),  max_attendees:80,  industry_tags:["SaaS","FinTech","EdTech"],    creator:{name:"Marcus Webb",      id:"d3"  }, attendee_count:72 },
+  { id:"e1", title:"AI Founders Breakfast", description:"Casual morning meetup for founders building AI-first products. Share what you're working on over coffee.", location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC", cover_url:"theme:aurora", event_date:ud(3,8,30), max_attendees:25, industry_tags:["DeepTech","SaaS"], creator:{name:"Alex Chen",id:"d1"}, attendee_count:8 },
+  { id:"e2", title:"FinTech Demo Day Melbourne", description:"10 early-stage fintech founders pitch to a room of angels and VCs. Networking drinks after.", location:"Stone & Chalk, 710 Collins St, Docklands VIC", cover_url:"theme:ocean", event_date:ud(5,14,0), max_attendees:80, industry_tags:["FinTech"], creator:{name:"Daniel Kim",id:"d5"}, attendee_count:42 },
+  { id:"e3", title:"Web3 Builders Hackathon", description:"48-hour hackathon building DeFi and on-chain primitives. $10K in prizes. Teams of 2-4.", location:"York Butter Factory, 62 King St, Melbourne VIC", cover_url:"theme:midnight", event_date:ud(8,9,0), max_attendees:120, industry_tags:["Web3"], creator:{name:"Sofia Russo",id:"d4"}, attendee_count:67 },
+  { id:"e4", title:"EdTech Product Workshop", description:"Hands-on workshop on building engaging learning experiences. Bring your laptop and a product idea.", location:"The Cluster, 17/31 Queen St, Melbourne VIC", cover_url:"theme:mint", event_date:ud(6,16,0), max_attendees:50, industry_tags:["EdTech"], creator:{name:"Ethan Brooks",id:"d17"}, attendee_count:29 },
+  { id:"e5", title:"Climate Tech Pitch Night", description:"Founders working on climate solutions pitch to a panel of impact investors. Q&A follows.", location:"Melbourne Connect, 700 Swanston St, Carlton VIC", cover_url:"theme:forest", event_date:ud(10,18,30), max_attendees:60, industry_tags:["Climate"], creator:{name:"Amara Okonkwo",id:"d7"}, attendee_count:38 },
+  { id:"e6", title:"SaaS Growth Masterclass", description:"Deep dive into product-led growth strategies that took companies past $10M ARR. Real data.", location:"WeWork, 401 Collins St, Melbourne VIC", cover_url:"theme:royal", event_date:ud(7,10,0), max_attendees:40, industry_tags:["SaaS"], creator:{name:"Lena Kowalski",id:"d22"}, attendee_count:31 },
+  { id:"e7", title:"Founder Speed Dating", description:"Find your co-founder in 90 minutes. 5-minute rounds with potential matches. Structured and fun.", location:"BetweenUs Cafe, 141 Maling Rd, Canterbury VIC", cover_url:"theme:candy", event_date:ud(4,18,0), max_attendees:30, industry_tags:["SaaS","FinTech"], creator:{name:"Marcus Webb",id:"d3"}, attendee_count:22 },
+  { id:"e8", title:"HealthTech Investor Roundtable", description:"Closed-door roundtable connecting HealthTech founders with Series A investors. Application required.", location:"Alfred Health Precinct, Prahran VIC", cover_url:"theme:sunset", event_date:ud(12,13,0), max_attendees:16, industry_tags:["HealthTech"], creator:{name:"Tyler Washington",id:"d29"}, attendee_count:12 },
+  { id:"e9", title:"Women in DeepTech Mixer", description:"Monthly mixer celebrating women building frontier technology. Allies welcome.", location:"Higher Order, 55 Elizabeth St, Melbourne VIC", cover_url:"theme:bloom", event_date:ud(9,17,30), max_attendees:70, industry_tags:["DeepTech","Climate"], creator:{name:"Zara Ahmed",id:"d18"}, attendee_count:45 },
+  { id:"e10", title:"Open Source Dev Meetup", description:"Lightning talks on tooling, infra and developer experience. Pizza provided.", location:"Library at The Dock, 107 Victoria Hbr, Docklands VIC", cover_url:"theme:slate", event_date:ud(11,18,0), max_attendees:45, industry_tags:["SaaS","DeepTech"], creator:{name:"Nina Volkov",id:"d30"}, attendee_count:33 },
+  { id:"e11", title:"E-commerce Founders Lunch", description:"Intimate lunch for DTC and marketplace founders. Swap playbooks, make real connections.", location:"Higher Ground, 650 Little Bourke St, Melbourne VIC", cover_url:"theme:ember", event_date:ud(13,12,30), max_attendees:20, industry_tags:["E-commerce"], creator:{name:"Nadia Petrov",id:"d12"}, attendee_count:14 },
+  { id:"e12", title:"Mobile-First Product Summit", description:"Full-day summit on building exceptional mobile products. Speakers, workshops and demos.", location:"MCEC, 1 Convention Centre Pl, South Wharf VIC", cover_url:"theme:aurora", event_date:ud(16,9,0), max_attendees:200, industry_tags:["Consumer","EdTech"], creator:{name:"Mei Yamamoto",id:"d16"}, attendee_count:128 },
+  { id:"e13", title:"Asian Founders Circle", description:"Monthly circle for Asian-Australian founders building global companies. Peer support and intros.", location:"Kensington Town Hall, 30 Bellair St, Kensington VIC", cover_url:"theme:sand", event_date:ud(6,17,0), max_attendees:35, industry_tags:["FinTech","E-commerce"], creator:{name:"Aisha Diallo",id:"d20"}, attendee_count:19 },
+  { id:"e14", title:"B2B SaaS Metrics Deep Dive", description:"Workshop on the metrics that matter: NRR, CAC payback, magic number, with real benchmarks.", location:"Inspire9, 41 Stewart St, Richmond VIC", cover_url:"theme:ocean", event_date:ud(8,15,0), max_attendees:100, industry_tags:["SaaS"], creator:{name:"Sophie Laurent",id:"d24"}, attendee_count:73 },
+  { id:"e15", title:"Property Tech Breakfast", description:"Founders and operators in proptech share what's working in a shifting market.", location:"Sofitel Melbourne, 25 Collins St, Melbourne VIC", cover_url:"theme:forest", event_date:ud(14,7,30), max_attendees:45, industry_tags:["PropTech"], creator:{name:"James Whitfield",id:"d9"}, attendee_count:27 },
+  { id:"e16", title:"First-Time Founders 101", description:"Everything nobody tells you in year one: equity, hiring, burn, and staying sane.", location:"General Assembly, 60 Market St, Melbourne VIC", cover_url:"theme:mint", event_date:ud(5,18,30), max_attendees:60, industry_tags:["SaaS"], creator:{name:"Priya Sharma",id:"d11"}, attendee_count:41 },
+  { id:"e17", title:"Angel Investor Office Hours", description:"Book a 15-min slot with active angels. Bring your deck and your hardest question.", location:"Tank Stream Labs, Melbourne VIC", cover_url:"theme:royal", event_date:ud(17,10,0), max_attendees:24, industry_tags:["FinTech"], creator:{name:"Robert Hayes",id:"d8"}, attendee_count:18 },
+  { id:"e18", title:"Design Systems for Startups", description:"Practical session on building a design system that scales without slowing you down.", location:"Portable, witness 11 Duke St, Abbotsford VIC", cover_url:"theme:candy", event_date:ud(9,16,30), max_attendees:35, industry_tags:["SaaS"], creator:{name:"Chloe Nguyen",id:"d14"}, attendee_count:23 },
+  { id:"e19", title:"Agritech Innovation Forum", description:"Founders and growers tackling yield, water and supply chain with technology.", location:"Melbourne Showgrounds, Ascot Vale VIC", cover_url:"theme:sand", event_date:ud(19,9,30), max_attendees:90, industry_tags:["AgriTech","Climate"], creator:{name:"Tom Baxter",id:"d21"}, attendee_count:52 },
+  { id:"e20", title:"Bootstrapped Founders Dinner", description:"No VCs, no pitching. Just profitable founders talking about real numbers.", location:"Bar Lourinha, 37 Little Collins St, Melbourne VIC", cover_url:"theme:ember", event_date:ud(11,19,0), max_attendees:18, industry_tags:["SaaS"], creator:{name:"Grace Miller",id:"d13"}, attendee_count:16 },
+  { id:"e21", title:"Cybersecurity Founder Briefing", description:"What every startup needs to know about security before enterprise customers ask.", location:"Deloitte, 477 Collins St, Melbourne VIC", cover_url:"theme:midnight", event_date:ud(15,12,0), max_attendees:55, industry_tags:["DeepTech"], creator:{name:"Omar Haddad",id:"d19"}, attendee_count:34 },
+  { id:"e22", title:"Creator Economy Meetup", description:"Founders building tools for creators. Demos, discussion, and a lot of opinions.", location:"Kindred Studios, 3 Harris St, Yarraville VIC", cover_url:"theme:bloom", event_date:ud(7,18,0), max_attendees:50, industry_tags:["Consumer"], creator:{name:"Isla Fraser",id:"d25"}, attendee_count:37 },
+  { id:"e23", title:"Marketplace Founders Roundtable", description:"Solving the cold-start problem: liquidity, trust, and take rates.", location:"Fishburners, Melbourne VIC", cover_url:"theme:ocean", event_date:ud(20,13,30), max_attendees:28, industry_tags:["E-commerce"], creator:{name:"Victor Lam",id:"d6"}, attendee_count:21 },
+  { id:"e24", title:"No-Code Build Night", description:"Ship a working prototype in one evening using no-code tools. Beginners welcome.", location:"The Commons, 90 Maribyrnong St, Footscray VIC", cover_url:"theme:mint", event_date:ud(6,18,0), max_attendees:40, industry_tags:["SaaS"], creator:{name:"Hannah Ross",id:"d27"}, attendee_count:30 },
+  { id:"e25", title:"Sustainability Startup Showcase", description:"Eight founders showcase products cutting emissions and waste. Voting and prizes.", location:"Fed Square, Swanston St, Melbourne VIC", cover_url:"theme:forest", event_date:ud(22,17,0), max_attendees:150, industry_tags:["Climate"], creator:{name:"Daniel Osei",id:"d23"}, attendee_count:88 },
+  { id:"e26", title:"Legal Essentials for Founders", description:"Shareholder agreements, IP, employment: the legal basics, explained plainly.", location:"MinterEllison, 447 Collins St, Melbourne VIC", cover_url:"theme:slate", event_date:ud(10,12,30), max_attendees:60, industry_tags:["SaaS"], creator:{name:"Rachel Cohen",id:"d28"}, attendee_count:44 },
+  { id:"e27", title:"Hardware & Robotics Night", description:"Show-and-tell for founders building physical products. Bring your prototype.", location:"Docklands Makerspace, Melbourne VIC", cover_url:"theme:ember", event_date:ud(18,18,0), max_attendees:45, industry_tags:["DeepTech"], creator:{name:"Ken Tanaka",id:"d15"}, attendee_count:26 },
+  { id:"e28", title:"Founder Wellbeing Morning", description:"Run, coffee, and honest conversation about the mental load of building.", location:"Botanic Gardens, Birdwood Ave, Melbourne VIC", cover_url:"theme:sunset", event_date:ud(4,7,0), max_attendees:30, industry_tags:["Wellness"], creator:{name:"Emma Sullivan",id:"d26"}, attendee_count:24 },
+  { id:"e29", title:"Enterprise Sales Playbook", description:"How to land your first six-figure contract. Scripts, objections, and pricing.", location:"Salesforce Tower, 180 George St, Melbourne VIC", cover_url:"theme:royal", event_date:ud(21,14,0), max_attendees:75, industry_tags:["SaaS"], creator:{name:"Michael Zhang",id:"d10"}, attendee_count:58 },
+  { id:"e30", title:"ABAA Community Summer Social", description:"Our biggest community night of the year. Food, drinks, and 200+ founders.", location:"Rooftop at QT, 133 Russell St, Melbourne VIC", cover_url:"theme:aurora", event_date:ud(25,18,0), max_attendees:220, industry_tags:["Community"], creator:{name:"ABAA Team",id:"d2"}, attendee_count:161 },
 ];
 
 // ════════════════════════════════════════════════════════
@@ -1436,8 +1482,20 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
 
               {/* Cover image upload */}
               <div className="space-y-1.5">
-                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Cover Image</label>
-                {form.cover_url ? (
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Cover</label>
+                {/* Luma-style theme gallery */}
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{scrollbarWidth:"none"}}>
+                  {COVER_THEMES.map(t=>(
+                    <button key={t.id} onClick={()=>setForm(f=>({...f,cover_url:`theme:${t.id}`}))}
+                      title={t.id}
+                      className="flex-shrink-0 rounded-xl transition-transform"
+                      style={{width:"52px",height:"34px",background:t.grad,
+                        border: form.cover_url===`theme:${t.id}` ? "2.5px solid #fff" : `1px solid ${BORDER}`,
+                        transform: form.cover_url===`theme:${t.id}` ? "scale(1.08)" : "scale(1)"}}/>
+                  ))}
+                </div>
+                <div className="text-white/30 text-[11px]">Pick a theme, or upload your own image below</div>
+                {form.cover_url && !String(form.cover_url).startsWith("theme:") ? (
                   <div className="relative rounded-2xl overflow-hidden" style={{aspectRatio:"16/9"}}>
                     <img src={form.cover_url} alt="cover" className="w-full h-full object-cover"/>
                     <button onClick={()=>setForm(f=>({...f,cover_url:""}))}
@@ -1532,11 +1590,21 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
             return (
               <motion.div key={ev.id} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:i*0.03}}>
                 <Card className={`overflow-hidden cursor-pointer transition-all hover:border-white/20 ${past?"opacity-50":""}`}>
-                  {ev.cover_url&&(
-                    <div onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})} className="w-full overflow-hidden" style={{aspectRatio:"16/9"}}>
-                      <img src={ev.cover_url} alt={ev.title} className="w-full h-full object-cover"/>
-                    </div>
-                  )}
+                  {(()=>{
+                    const g = themeGrad(ev.cover_url) || (!ev.cover_url ? autoGrad(ev.id||ev.title) : null);
+                    return (
+                      <div onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})} className="w-full overflow-hidden relative" style={{aspectRatio:"16/9",background:g||"transparent"}}>
+                        {g ? (
+                          <div className="absolute inset-0 flex items-center justify-center p-5">
+                            <div className="text-center">
+                              <div className="text-white font-bold leading-tight" style={{fontSize:"clamp(15px,4.5vw,22px)",textShadow:"0 2px 12px rgba(0,0,0,0.35)"}}>{ev.title}</div>
+                              <div className="text-white/80 text-xs mt-1.5">{new Date(ev.event_date).toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"})}</div>
+                            </div>
+                          </div>
+                        ) : <img src={ev.cover_url} alt={ev.title} className="w-full h-full object-cover"/>}
+                      </div>
+                    );
+                  })()}
                   <div className="p-5">
                     <div onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})}>
                       <div className="flex items-start justify-between gap-2">
@@ -1677,19 +1745,25 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
               className="w-full max-w-lg overflow-y-auto rounded-t-3xl md:rounded-3xl mb-[72px] md:mb-0"
               style={{maxHeight:"78vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
               {/* Cover image (if any) */}
-              {selectedEvent.cover_url&&(
-                <div className="relative w-full overflow-hidden" style={{aspectRatio:"16/9"}}>
-                  <img src={selectedEvent.cover_url} alt={selectedEvent.title} className="w-full h-full object-cover"/>
-                  <button onClick={()=>setSelectedEvent(null)}
-                    className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center text-white transition-all" style={{background:"rgba(0,0,0,0.5)"}}>✕</button>
-                </div>
-              )}
+              {(()=>{
+                const g = themeGrad(selectedEvent.cover_url) || (!selectedEvent.cover_url ? autoGrad(selectedEvent.id||selectedEvent.title) : null);
+                return (
+                  <div className="relative w-full overflow-hidden" style={{aspectRatio:"16/9",background:g||"transparent"}}>
+                    {g ? (
+                      <div className="absolute inset-0 flex items-center justify-center p-6">
+                        <div className="text-center">
+                          <div className="text-white font-bold leading-tight" style={{fontSize:"clamp(18px,5.5vw,28px)",textShadow:"0 2px 14px rgba(0,0,0,0.35)"}}>{selectedEvent.title}</div>
+                          <div className="text-white/85 text-sm mt-2">{new Date(selectedEvent.event_date).toLocaleDateString("en-AU",{weekday:"long",day:"numeric",month:"long"})}</div>
+                        </div>
+                      </div>
+                    ) : <img src={selectedEvent.cover_url} alt={selectedEvent.title} className="w-full h-full object-cover"/>}
+                    <button onClick={()=>setSelectedEvent(null)}
+                      className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center text-white transition-all" style={{background:"rgba(0,0,0,0.5)"}}>✕</button>
+                  </div>
+                );
+              })()}
               {/* Modal header banner */}
-              <div className="relative p-6 pb-5" style={selectedEvent.cover_url?{}:{background:"linear-gradient(135deg,rgba(124,111,224,0.25),rgba(167,139,250,0.12))"}}>
-                {!selectedEvent.cover_url&&(
-                  <button onClick={()=>setSelectedEvent(null)}
-                    className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-all" style={{background:"rgba(0,0,0,0.3)"}}>✕</button>
-                )}
+              <div className="relative p-6 pb-5">
                 {selectedEvent.industry_tags?.length>0&&(
                   <div className="flex flex-wrap gap-2 mb-3">{selectedEvent.industry_tags.map(t=><SkillChip key={t} label={t}/>)}</div>
                 )}
@@ -1711,6 +1785,22 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
 
                 {/* Description */}
                 <div>
+                  {/* Luma-style quick actions */}
+                  <div className="flex gap-2 mb-4">
+                    <button onClick={()=>downloadEventICS(selectedEvent)}
+                      className="flex-1 py-2.5 rounded-2xl text-xs font-semibold text-white" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>
+                      📅 Add to Calendar
+                    </button>
+                    <button onClick={async()=>{
+                      const url=`${window.location.origin}${window.location.pathname}?event=${selectedEvent.id}`;
+                      const txt=`${selectedEvent.title} — ${fmtDate(selectedEvent.event_date)}`;
+                      try { if(navigator.share) await navigator.share({title:selectedEvent.title,text:txt,url}); else { await navigator.clipboard.writeText(url); showToast("Event link copied ✓"); } }
+                      catch(e){}
+                    }}
+                      className="flex-1 py-2.5 rounded-2xl text-xs font-semibold text-white" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>
+                      🔗 Share Event
+                    </button>
+                  </div>
                   <div className="text-white/35 text-xs font-semibold uppercase tracking-wider mb-2">About this event</div>
                   <p className="text-white/70 text-sm leading-relaxed">{selectedEvent.description||"No description provided."}</p>
                 </div>
@@ -1736,6 +1826,26 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                       <div className="text-white text-sm font-medium">
                         {selectedEvent.cnt}{selectedEvent.max_attendees?` of ${selectedEvent.max_attendees}`:""} registered
                       </div>
+                      {/* Who's coming — Luma-style social proof */}
+                      {(()=>{
+                        const guests=(eventAttendees[selectedEvent.id]||[]).filter(g=>g&&g.name);
+                        if(guests.length===0) return null;
+                        return (
+                          <div className="flex items-center gap-2 mt-2">
+                            <div className="flex" style={{marginLeft:"4px"}}>
+                              {guests.slice(0,5).map((g,i)=>(
+                                <div key={g.id||i} style={{marginLeft:"-8px",zIndex:5-i}}>
+                                  <Av name={g.name} url={g.avatar_url} color={pal(g.id||g.name)} size="xs" ring/>
+                                </div>
+                              ))}
+                            </div>
+                            <span className="text-white/45 text-xs">
+                              {guests.slice(0,2).map(g=>String(g.name).split(" ")[0]).join(", ")}
+                              {guests.length>2?` and ${guests.length-2} others are going`:" going"}
+                            </span>
+                          </div>
+                        );
+                      })()}
                       {selectedEvent.max_attendees&&(
                         <div className="mt-2">
                           <div className="h-1.5 rounded-full overflow-hidden" style={{background:"rgba(255,255,255,0.08)"}}>
