@@ -3992,10 +3992,164 @@ function BusinessCardPage({ userId }) {
   );
 }
 
+// ═══ PUBLIC EVENT PAGE (Luma-style, no login needed) ═══
+function PublicEventPage({ eventId }){
+  const [ev,setEv]=useState(undefined);
+  const [guests,setGuests]=useState([]);
+  const [host,setHost]=useState(null);
+  const [copied,setCopied]=useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      try {
+        const {data}=await supabase.from("events").select("*").eq("id",eventId).maybeSingle();
+        if(!data){ setEv(null); return; }
+        setEv(data);
+        if(data.creator_id){
+          const {data:h}=await supabase.from("profiles").select("id,name,avatar_url,role").eq("id",data.creator_id).maybeSingle();
+          setHost(h||null);
+        }
+        if(data.guest_list_public!==false){
+          const {data:atts}=await supabase.from("event_attendees")
+            .select("status, profile:profiles(id,name,avatar_url)").eq("event_id",eventId).eq("status","approved");
+          setGuests((atts||[]).map(a=>a.profile).filter(Boolean));
+        }
+      } catch(e){ setEv(null); }
+    })();
+  },[eventId]);
+
+  if(ev===undefined) return <div className="min-h-screen flex items-center justify-center" style={{background:BG}}><div className="text-white/40 text-sm">Loading event…</div></div>;
+  if(ev===null) return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center" style={{background:BG}}>
+      <div className="text-5xl mb-4">🔍</div>
+      <div className="text-white font-bold text-xl mb-2">Event not found</div>
+      <div className="text-white/40 text-sm mb-6">This event may have been removed or the link is incorrect.</div>
+      <a href={window.location.origin} className="px-6 py-3 rounded-2xl text-white font-semibold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>Explore ABAA Events</a>
+    </div>
+  );
+
+  const g = themeGrad(ev.cover_url) || (!ev.cover_url ? autoGrad(ev.id||ev.title) : null);
+  const d = new Date(ev.event_date);
+  const past = d < new Date();
+
+  return (
+    <div className="min-h-screen px-4 py-8 flex flex-col items-center" style={{background:`radial-gradient(circle at 50% 0%, rgba(124,111,224,0.18), ${BG} 60%)`}}>
+      <div className="w-full max-w-md">
+        <div className="rounded-3xl overflow-hidden" style={{background:"#0f1320",border:`1px solid ${BORDER}`,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+          {/* Cover */}
+          <div className="relative w-full" style={{aspectRatio:"16/9",background:g||"transparent"}}>
+            {g ? (
+              <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
+                <div>
+                  <div className="text-white font-bold leading-tight" style={{fontSize:"clamp(18px,5.5vw,28px)",textShadow:"0 2px 14px rgba(0,0,0,0.35)"}}>{ev.title}</div>
+                  <div className="text-white/85 text-sm mt-2">{d.toLocaleDateString("en-AU",{weekday:"long",day:"numeric",month:"long"})}</div>
+                </div>
+              </div>
+            ) : <img src={ev.cover_url} alt={ev.title} className="w-full h-full object-cover"/>}
+          </div>
+
+          <div className="p-6 space-y-5">
+            <div>
+              <h1 className="text-white font-bold text-2xl leading-tight">{ev.title}</h1>
+              {past&&<span className="inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(239,68,68,0.15)",color:"#f87171"}}>● Event Ended</span>}
+            </div>
+
+            {/* When & where */}
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <span className="text-lg">📅</span>
+                <div>
+                  <div className="text-white/40 text-xs">When</div>
+                  <div className="text-white text-sm font-medium">{d.toLocaleDateString("en-AU",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+                  <div className="text-white/60 text-sm">{d.toLocaleTimeString("en-AU",{hour:"numeric",minute:"2-digit"})}</div>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-lg">📍</span>
+                <div>
+                  <div className="text-white/40 text-xs">Where</div>
+                  <div className="text-white text-sm font-medium">{ev.hide_location?"Revealed after your registration is approved":(ev.location||"TBA")}</div>
+                </div>
+              </div>
+              {host&&(
+                <div className="flex items-center gap-3">
+                  <Av name={host.name} url={host.avatar_url} color={pal(host.id)} size="sm" ring/>
+                  <div>
+                    <div className="text-white/40 text-xs">Hosted by</div>
+                    <div className="text-white text-sm font-medium">{host.name}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Tags */}
+            {(ev.industry_tags||[]).length>0&&(
+              <div className="flex flex-wrap gap-2">{ev.industry_tags.map(t=><SkillChip key={t} label={t}/>)}</div>
+            )}
+
+            {/* Description */}
+            {ev.description&&(
+              <div>
+                <div className="text-white/35 text-xs font-semibold uppercase tracking-wider mb-2">About this event</div>
+                <p className="text-white/70 text-sm leading-relaxed whitespace-pre-wrap">{ev.description}</p>
+              </div>
+            )}
+
+            {/* Guests */}
+            {guests.length>0&&(
+              <div>
+                <div className="text-white/35 text-xs font-semibold uppercase tracking-wider mb-2">{guests.length} going</div>
+                <div className="flex items-center">
+                  {guests.slice(0,8).map((gu,i)=>(
+                    <div key={gu.id||i} style={{marginLeft:i===0?0:"-8px",zIndex:8-i}}>
+                      <Av name={gu.name} url={gu.avatar_url} color={pal(gu.id||gu.name)} size="xs" ring/>
+                    </div>
+                  ))}
+                  {guests.length>8&&<span className="text-white/40 text-xs ml-2">+{guests.length-8} more</span>}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="space-y-2 pt-2" style={{borderTop:`1px solid ${BORDER}`}}>
+              <button onClick={()=>downloadEventICS(ev)} className="w-full py-3 rounded-2xl text-white text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>
+                📅 Add to Calendar
+              </button>
+              <button onClick={async()=>{
+                try {
+                  if(navigator.share) await navigator.share({title:ev.title,url:window.location.href});
+                  else { await navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(()=>setCopied(false),2000); }
+                } catch(e){}
+              }} className="w-full py-3 rounded-2xl text-white text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>
+                {copied?"✓ Link copied!":"🔗 Share Event"}
+              </button>
+              {!past&&(
+                <a href={window.location.origin} className="block w-full text-center py-3.5 rounded-2xl text-white font-bold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",boxShadow:"0 8px 24px rgba(124,111,224,0.4)"}}>
+                  ✨ Sign in to Register
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Community CTA */}
+        <div className="text-center mt-6 pb-4">
+          <div className="text-white/50 text-sm">Discover more founder events</div>
+          <a href={window.location.origin} className="text-purple-300 text-sm font-semibold">ABAA Community →</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   // ── Public Digital Business Card route — no login required ──
   const cardId = new URLSearchParams(window.location.search).get("card");
   if(cardId) return <BusinessCardPage userId={cardId}/>;
+
+  // ── Public Event page — no login required ──
+  const publicEventId = new URLSearchParams(window.location.search).get("event");
+  if(publicEventId) return <PublicEventPage eventId={publicEventId}/>;
 
   const [session,setSession]=useState(undefined);
   const [profile,setProfile]=useState(null);
