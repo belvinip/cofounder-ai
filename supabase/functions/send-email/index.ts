@@ -100,6 +100,22 @@ function buildEmail(type: string, data: any): { subject: string; html: string } 
         html: wrap("You have a new meeting booked",
           `<strong>${data.guestName || "Someone"}</strong> booked a meeting with you for <strong>${data.when || "an upcoming time"}</strong>.${data.note ? `<br><br>Their note: "${data.note}"` : ""}<br><br>You can manage your bookings in your profile.`,
           cta("View bookings", "")) };
+    case "event_waitlisted":
+      return { subject: `📋 You're on the waitlist — ${data.title || "event"}`,
+        html: wrap("You're on the waitlist",
+          `<strong>${data.title || "This event"}</strong> is currently full, so we've added you to the waitlist.<br><br>If a spot opens up, you'll be notified straight away and moved into the registration queue.`,
+          cta("View event", "")) };
+    case "waitlist_promoted":
+      return { subject: `🎉 A spot opened up — ${data.title || "event"}`,
+        html: wrap("Good news — a spot opened up!",
+          `A place has become available for <strong>${data.title || "the event"}</strong> and you've been moved off the waitlist.<br><br>Your registration is now with the host for approval.`,
+          cta("View event", "")) };
+    case "event_announcement":
+      return { subject: `📣 Update: ${data.title || "your event"}`,
+        html: wrap(`Update from the host`,
+          `<div style="color:#8b93ab;font-size:13px;margin-bottom:12px;">Regarding <strong style="color:#fff;">${data.title || "your event"}</strong></div>
+           <div style="background:#0d1120;border:1px solid #232a42;border-radius:14px;padding:16px;color:#b8c0d8;white-space:pre-wrap;">${data.body || ""}</div>`,
+          cta("View event", "")) };
     case "booking_request":
       return { subject: `📅 Meeting request from ${data.guestName || "someone"} — ${data.when || ""}`,
         html: wrap("You have a new meeting request",

@@ -1253,12 +1253,173 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
 // ════════════════════════════════════════════════════════
 // EVENTS TAB
 // ════════════════════════════════════════════════════════
+// ═══ QR CHECK-IN (Luma-style ticket + door scanner) ═══
+function ticketCode(eventId, userId){ return `ABAA-TICKET:${eventId}:${userId}`; }
+function ticketQrUrl(eventId, userId){
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(ticketCode(eventId,userId))}`;
+}
+
+function TicketModal({ event, userId, onClose }){
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/85 p-4" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="w-full max-w-xs rounded-3xl p-6 text-center" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
+        <div className="text-white font-bold text-lg mb-1">Your Ticket</div>
+        <div className="text-white/50 text-sm mb-4">{event.title}</div>
+        <div className="inline-block p-3 rounded-2xl" style={{background:"#fff"}}>
+          <img src={ticketQrUrl(event.id,userId)} alt="Ticket QR" width={180} height={180}/>
+        </div>
+        <p className="text-white/35 text-xs mt-4">Show this at the door for quick check-in</p>
+        <button onClick={onClose} className="mt-5 w-full py-3 rounded-2xl text-white font-semibold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>Done</button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function CheckInScanner({ event, onCheckIn, onClose, showToast }){
+  const videoRef=useRef(); const [status,setStatus]=useState("Point camera at a ticket QR");
+  const [manual,setManual]=useState(""); const [supported,setSupported]=useState(true);
+  useEffect(()=>{
+    let stream, detector, raf, stopped=false;
+    async function start(){
+      if(!("BarcodeDetector" in window)){ setSupported(false); return; }
+      try {
+        detector = new window.BarcodeDetector({ formats:["qr_code"] });
+        stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" } });
+        if(videoRef.current){ videoRef.current.srcObject = stream; await videoRef.current.play(); }
+        const scan = async () => {
+          if(stopped) return;
+          try {
+            const codes = await detector.detect(videoRef.current);
+            if(codes.length){
+              const val = codes[0].rawValue;
+              if(val && val.startsWith(`ABAA-TICKET:${event.id}:`)){
+                const uid = val.split(":")[2];
+                onCheckIn(uid);
+                setStatus("✓ Checked in!");
+                setTimeout(()=>setStatus("Point camera at a ticket QR"),1500);
+              }
+            }
+          } catch(e){}
+          raf = requestAnimationFrame(scan);
+        };
+        scan();
+      } catch(e){ setSupported(false); }
+    }
+    start();
+    return ()=>{ stopped=true; if(raf) cancelAnimationFrame(raf); if(stream) stream.getTracks().forEach(t=>t.stop()); };
+  },[event.id]);
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[95] flex flex-col bg-black">
+      <div className="p-4 flex items-center justify-between" style={{borderBottom:`1px solid ${BORDER}`}}>
+        <div className="text-white font-bold">📷 Check-in Scanner</div>
+        <button onClick={onClose} className="text-white/60 text-xl px-2">✕</button>
+      </div>
+      {supported ? (
+        <>
+          <div className="flex-1 relative overflow-hidden">
+            <video ref={videoRef} className="w-full h-full object-cover" muted playsInline/>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-56 h-56 rounded-3xl" style={{border:"3px solid rgba(167,139,250,0.8)"}}/>
+            </div>
+          </div>
+          <div className="p-5 text-center text-white/70 text-sm">{status}</div>
+        </>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <div className="text-white/50 text-sm mb-4">Camera scanning isn't supported on this browser.<br/>Enter the guest's ticket code manually:</div>
+          <input value={manual} onChange={e=>setManual(e.target.value)} placeholder="Paste ticket code"
+            className="w-full max-w-xs rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none mb-3"
+            style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+          <button onClick={()=>{
+            if(manual.startsWith(`ABAA-TICKET:${event.id}:`)){ onCheckIn(manual.split(":")[2]); showToast("✓ Checked in!"); setManual(""); }
+            else showToast("That doesn't look like a valid ticket for this event","error");
+          }} className="px-6 py-3 rounded-2xl text-white font-semibold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>Check In</button>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function EventAnnouncements({ event, isHost, showToast, load }){
+  const [items,setItems]=useState([]);
+  const [text,setText]=useState("");
+  const [sending,setSending]=useState(false);
+  const [open,setOpen]=useState(false);
+
+  async function loadItems(){
+    try {
+      const {data}=await supabase.from("event_announcements").select("*").eq("event_id",event.id).order("created_at",{ascending:false});
+      setItems(data||[]);
+    } catch(e){ setItems([]); }
+  }
+  useEffect(()=>{ if(!String(event.id).startsWith("e")) loadItems(); },[event.id]);
+
+  async function send(){
+    if(!text.trim()) return;
+    setSending(true);
+    try {
+      const {error}=await supabase.from("event_announcements").insert({event_id:event.id,body:text.trim()});
+      if(error) throw error;
+      // Email every approved guest
+      const {data:atts}=await supabase.from("event_attendees")
+        .select("status, profile:profiles(email,name)").eq("event_id",event.id).eq("status","approved");
+      (atts||[]).forEach(a=>{
+        if(a.profile?.email) sendEmail("event_announcement", a.profile.email, { title:event.title, body:text.trim() });
+      });
+      showToast(`Announcement sent to ${(atts||[]).length} guest${(atts||[]).length===1?"":"s"} ✓`);
+      setText(""); loadItems();
+    } catch(e){ showToast(e.message||"Could not send","error"); }
+    setSending(false);
+  }
+
+  if(String(event.id).startsWith("e")) return null;
+  if(!isHost && items.length===0) return null;
+
+  return (
+    <div className="rounded-2xl p-4" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+      <button onClick={()=>setOpen(o=>!o)} className="w-full flex items-center justify-between">
+        <span className="text-white/70 text-xs font-semibold uppercase tracking-wider">📣 Announcements{items.length>0?` (${items.length})`:""}</span>
+        <span className="text-white/40">{open?"▾":"▸"}</span>
+      </button>
+      {open&&(
+        <div className="mt-3 space-y-3">
+          {isHost&&(
+            <div>
+              <textarea value={text} onChange={e=>setText(e.target.value)} rows={2}
+                placeholder="Send an update to everyone who registered…"
+                className="w-full rounded-xl px-3 py-2.5 text-white placeholder-white/25 focus:outline-none resize-none"
+                style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              <button onClick={send} disabled={sending||!text.trim()}
+                className="w-full mt-2 py-2.5 rounded-xl text-white text-sm font-bold"
+                style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",opacity:(sending||!text.trim())?0.5:1}}>
+                {sending?"Sending…":"Send to all guests"}
+              </button>
+            </div>
+          )}
+          {items.length===0
+            ? <div className="text-white/30 text-xs text-center py-2">No announcements yet</div>
+            : items.map(a=>(
+                <div key={a.id} className="p-3 rounded-xl" style={{background:"rgba(124,111,224,0.08)",border:"1px solid rgba(124,111,224,0.2)"}}>
+                  <div className="text-white/80 text-sm whitespace-pre-wrap">{a.body}</div>
+                  <div className="text-white/30 text-[10px] mt-1.5">{new Date(a.created_at).toLocaleString("en-AU",{day:"numeric",month:"short",hour:"numeric",minute:"2-digit"})}</div>
+                </div>
+              ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs }) {
   const [events, setEvents] = useState([]);
   const [attSet, setAttSet] = useState({});
   const [pendingAtt, setPendingAtt] = useState({});
   const [myEventsOpen, setMyEventsOpen] = useState(true);
   const [attCounts, setAttCounts] = useState({});
+  const [pendingCounts, setPendingCounts] = useState({});
+  const [waitlist, setWaitlist] = useState({});
   const [eventAttendees, setEventAttendees] = useState({}); // eventId -> [profiles]
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -1267,9 +1428,13 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
   const [filterState, setFilterState] = useState("");
   const [filterDate, setFilterDate] = useState("");
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [questionPrompt, setQuestionPrompt] = useState(null);
+  const [questionAnswer, setQuestionAnswer] = useState("");
+  const [showTicket, setShowTicket] = useState(null);
+  const [showScanner, setShowScanner] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [uploadingCover, setUploadingCover] = useState(false);
-  const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
+  const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false});
   const coverInputRef = useRef();
 
   async function load() {
@@ -1282,7 +1447,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
         // Load all attendees with their profile info + status
         const {data:att}=await supabase.from("event_attendees")
           .select("event_id, user_id, status, attended, profile:profiles(id,name,email,mobile,avatar_url,role,location)");
-        const counts={}, byEvent={}, mine={}, pendingByEvent={};
+        const counts={}, byEvent={}, mine={}, pendingByEvent={}, pendingCounts={}, waitlistByEvent={};
         (att||[]).forEach(a=>{
           const st=a.status||"approved";
           if(st==="approved"){
@@ -1290,12 +1455,17 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
             if(!byEvent[a.event_id]) byEvent[a.event_id]=[];
             if(a.profile) byEvent[a.event_id].push({...a.profile, attended:a.attended||false});
           } else if(st==="pending"){
+            pendingCounts[a.event_id]=(pendingCounts[a.event_id]||0)+1;
             if(!pendingByEvent[a.event_id]) pendingByEvent[a.event_id]=[];
             if(a.profile) pendingByEvent[a.event_id].push(a.profile);
+          } else if(st==="waitlisted"){
+            if(!waitlistByEvent[a.event_id]) waitlistByEvent[a.event_id]=[];
+            if(a.profile) waitlistByEvent[a.event_id].push(a.profile);
           }
           if(user && a.user_id===user.id) mine[a.event_id]=st;
         });
         setAttCounts(counts); setEventAttendees(byEvent); setAttSet(mine); setPendingAtt(pendingByEvent);
+        setPendingCounts(pendingCounts); setWaitlist(waitlistByEvent);
       }
     } catch(e){ setEvents(DEMO_EVENTS); }
     setLoading(false);
@@ -1306,7 +1476,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     setEditingId(null);
-    setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
+    setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false});
     setShowForm(true);
   }
 
@@ -1315,7 +1485,8 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
     setForm({
       title:ev.title||"", description:ev.description||"", location:ev.location||"",
       event_date:ev.event_date?new Date(ev.event_date).toISOString().slice(0,16):"",
-      max_attendees:ev.max_attendees||"", industry_tags:ev.industry_tags||[], cover_url:ev.cover_url||""
+      max_attendees:ev.max_attendees||"", industry_tags:ev.industry_tags||[], cover_url:ev.cover_url||"",
+      reg_question:ev.reg_question||"", guest_list_public:ev.guest_list_public!==false, hide_location:!!ev.hide_location
     });
     setSelectedEvent(null);
     setShowForm(true);
@@ -1337,7 +1508,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
     if(!form.title||!form.event_date){showToast("Title & date required","error");return;}
     setSaving(true);
     try {
-      const payload={title:form.title,description:form.description,location:form.location,event_date:form.event_date,max_attendees:parseInt(form.max_attendees)||null,industry_tags:form.industry_tags,cover_url:form.cover_url||null};
+      const payload={title:form.title,description:form.description,location:form.location,event_date:form.event_date,max_attendees:parseInt(form.max_attendees)||null,industry_tags:form.industry_tags,cover_url:form.cover_url||null,reg_question:form.reg_question||null,guest_list_public:form.guest_list_public!==false,hide_location:!!form.hide_location};
       if(editingId){
         await supabase.from("events").update(payload).eq("id",editingId);
         showToast("Event updated ✓");
@@ -1347,7 +1518,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
         if(!isAdmin && user.email) sendEmail("event_created", user.email, { title: payload.title });
       }
       setShowForm(false); setEditingId(null);
-      setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:""});
+      setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false});
       load();
     } catch(e){showToast(e.message,"error");}
     setSaving(false);
@@ -1360,7 +1531,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
     } catch(e){showToast(e.message,"error");}
   }
 
-  async function toggleAttend(evId) {
+  async function toggleAttend(evId, answer) {
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     if(typeof evId==="string"&&evId.startsWith("e")){showToast("Demo event — real events you create are fully functional 😊");return;}
@@ -1371,21 +1542,39 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
         await adminAction({action:"register_event", targetUserId:user.id, eventId:evId});
         showToast("Registered on behalf — awaiting host approval ✓"); load(); return;
       }
-      if(myStatus){ await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",user.id); showToast("Registration cancelled"); }
+      if(myStatus){ await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",user.id); showToast("Registration cancelled"); promoteFromWaitlist(evId); }
       else {
-        await supabase.from("event_attendees").insert({event_id:evId,user_id:user.id,status:"pending"}); showToast("Registration sent — awaiting host approval ✓");
         const ev=events.find(e=>e.id===evId);
+        const cnt=takenOf(ev);
+        const isFull = ev?.max_attendees && cnt>=ev.max_attendees;
+        const status = isFull ? "waitlisted" : "pending";
+        await supabase.from("event_attendees").insert({event_id:evId,user_id:user.id,status,answer:answer||null});
+        showToast(isFull ? "Event is full — you're on the waitlist 📋" : "Registration sent — awaiting host approval ✓");
         // Confirm to the registrant
-        if(user.email) sendEmail("event_register", user.email, { title: ev?.title });
+        if(user.email) sendEmail(isFull?"event_waitlisted":"event_register", user.email, { title: ev?.title });
         // Notify the host of a new registration
         if(ev?.creator_id){
           try { const {data:host}=await supabase.from("profiles").select("email").eq("id",ev.creator_id).maybeSingle();
-            if(host?.email) sendEmail("new_registration", host.email, { title: ev?.title, attendeeName: profile?.name||"A member" });
+            if(host?.email && !isFull) sendEmail("new_registration", host.email, { title: ev?.title, attendeeName: profile?.name||"A member" });
           } catch(e){}
         }
       }
       load();
     } catch(e){showToast(e.message,"error");}
+  }
+
+  // When a spot frees up, bump the longest-waiting waitlisted guest to pending
+  async function promoteFromWaitlist(evId){
+    try {
+      const {data:wl}=await supabase.from("event_attendees").select("*").eq("event_id",evId).eq("status","waitlisted").order("created_at").limit(1);
+      if(wl && wl.length){
+        await supabase.from("event_attendees").update({status:"pending"}).eq("event_id",evId).eq("user_id",wl[0].user_id);
+        const ev=events.find(e=>e.id===evId);
+        const {data:prof}=await supabase.from("profiles").select("email").eq("id",wl[0].user_id).maybeSingle();
+        if(prof?.email) sendEmail("waitlist_promoted", prof.email, { title: ev?.title });
+        load();
+      }
+    } catch(e){}
   }
 
   async function respondToAttendee(evId, userId, status) {
@@ -1401,7 +1590,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
           if(att?.email) sendEmail("event_approved", att.email, { title: ev?.title });
         } catch(e){}
       }
-      else { await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",userId); showToast("Registration declined"); }
+      else { await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",userId); showToast("Registration declined"); promoteFromWaitlist(evId); }
       load();
     } catch(e){showToast(e.message,"error");}
   }
@@ -1445,6 +1634,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
   const canManage = (ev) => user && (ev.creator_id===user.id || isAdmin); // edit/delete rights
   const ownsEvent = canManage; // keep existing references working for edit/delete/attendees
   const cntOf = (ev) => ev.attendee_count || attCounts[ev.id] || 0;
+  const takenOf = (ev) => (attCounts[ev.id]||0) + (pendingCounts[ev.id]||0); // used to trigger waitlist
   const isFuture = (ev) => new Date(ev.event_date) >= now;
 
   // Events I created (to manage attendees + tick attendance)
@@ -1545,6 +1735,35 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                   className="w-full rounded-2xl px-4 py-3 text-sm text-white focus:outline-none"
                   style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,colorScheme:"dark"}}/>
               </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Registration Question (optional)</label>
+                <input value={form.reg_question} onChange={e=>setForm(f=>({...f,reg_question:e.target.value}))} placeholder="e.g. Any dietary requirements?"
+                  className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+                  style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                <p className="text-white/25 text-xs">Guests will answer this when they register.</p>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                <div>
+                  <div className="text-white text-sm font-medium">Public guest list</div>
+                  <div className="text-white/35 text-xs">Show who's going on the event page</div>
+                </div>
+                <button onClick={()=>setForm(f=>({...f,guest_list_public:!f.guest_list_public}))}
+                  className="w-11 h-6 rounded-full transition-colors relative flex-shrink-0"
+                  style={{background:form.guest_list_public?"#7c6fe0":"rgba(255,255,255,0.15)"}}>
+                  <span className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all" style={{left:form.guest_list_public?"24px":"4px"}}/>
+                </button>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                <div>
+                  <div className="text-white text-sm font-medium">Hide exact location until approved</div>
+                  <div className="text-white/35 text-xs">Guests see full address only after you accept them</div>
+                </div>
+                <button onClick={()=>setForm(f=>({...f,hide_location:!f.hide_location}))}
+                  className="w-11 h-6 rounded-full transition-colors relative flex-shrink-0"
+                  style={{background:form.hide_location?"#7c6fe0":"rgba(255,255,255,0.15)"}}>
+                  <span className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all" style={{left:form.hide_location?"24px":"4px"}}/>
+                </button>
+              </div>
               <PrimaryBtn onClick={createEvent} loading={saving} className="w-full">{editingId?"Save Changes":"Create Event"}</PrimaryBtn>
             </Card>
           </motion.div>
@@ -1633,10 +1852,11 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
         {(()=>{
           const renderCard = (ev,i) => {
             const past=new Date(ev.event_date)<now;
-            const myStatus=attSet[ev.id]; // undefined | "pending" | "approved"
-            const attending=!!myStatus;
+            const myStatus=attSet[ev.id]; // undefined | "pending" | "approved" | "waitlisted"
+            const attending=!!myStatus && myStatus!=="waitlisted";
+            const onWaitlist=myStatus==="waitlisted";
             const cnt=cntOf(ev);
-            const full=ev.max_attendees&&cnt>=ev.max_attendees;
+            const full=ev.max_attendees&&takenOf(ev)>=ev.max_attendees;
             const spotsLeft = ev.max_attendees ? ev.max_attendees - cnt : null;
             return (
               <motion.div key={ev.id} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:i*0.03}}>
@@ -1644,7 +1864,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                   {(()=>{
                     const g = themeGrad(ev.cover_url) || (!ev.cover_url ? autoGrad(ev.id||ev.title) : null);
                     return (
-                      <div onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})} className="w-full overflow-hidden relative" style={{aspectRatio:"16/9",background:g||"transparent"}}>
+                      <div onClick={()=>setSelectedEvent({...ev,attending,onWaitlist,cnt,full,past,spotsLeft})} className="w-full overflow-hidden relative" style={{aspectRatio:"16/9",background:g||"transparent"}}>
                         {g ? (
                           <div className="absolute inset-0 flex items-center justify-center p-5">
                             <div className="text-center">
@@ -1657,7 +1877,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                     );
                   })()}
                   <div className="p-5">
-                    <div onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})}>
+                    <div onClick={()=>setSelectedEvent({...ev,attending,onWaitlist,cnt,full,past,spotsLeft})}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="font-bold text-white text-base mb-1">{ev.title}</div>
                         {ownsEvent(ev)&&<span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{background:"rgba(124,111,224,0.15)",color:"#a78bfa"}}>Your event</span>}
@@ -1681,7 +1901,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                       )}
                     </div>
                     {ownsEvent(ev)&&(
-                      <OutlineBtn onClick={()=>setSelectedEvent({...ev,attending,cnt,full,past,spotsLeft})} className="w-full mb-2" small>
+                      <OutlineBtn onClick={()=>setSelectedEvent({...ev,attending,onWaitlist,cnt,full,past,spotsLeft})} className="w-full mb-2" small>
                         👥 View Attendees ({cnt})
                       </OutlineBtn>
                     )}
@@ -1753,6 +1973,23 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                                 <button onClick={()=>respondToAttendee(ev.id,pr.id,"declined")} className="px-3 py-1.5 rounded-xl text-xs font-semibold" style={{background:"rgba(239,68,68,0.12)",color:"#f87171"}}>✕</button>
                               </div>
                             ))}</div>
+                          </Card>
+                        );
+                      })}
+                      {/* waitlist visibility for my events */}
+                      {myCreatedEvents.map(ev=>{
+                        const wl=waitlist[ev.id]||[];
+                        if(wl.length===0) return null;
+                        return (
+                          <Card key={"wl-"+ev.id} className="p-4 mb-3" style={{border:`1px solid ${BORDER}`}}>
+                            <div className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-2">📋 {wl.length} on Waitlist — {ev.title}</div>
+                            <div className="flex flex-wrap gap-2">{wl.map(g=>(
+                              <div key={g.id} className="flex items-center gap-1.5 px-2 py-1 rounded-full" style={{background:"rgba(255,255,255,0.05)"}}>
+                                <Av name={g.name} url={g.avatar_url} color={pal(g.id)} size="xs"/>
+                                <span className="text-white/60 text-xs">{g.name}</span>
+                              </div>
+                            ))}</div>
+                            <p className="text-white/30 text-xs mt-2">They'll be automatically offered a spot if one opens up.</p>
                           </Card>
                         );
                       })}
@@ -1864,8 +2101,10 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                     ? <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(239,68,68,0.15)",color:"#f87171"}}>● Event Ended</span>
                     : selectedEvent.attending
                     ? <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(16,185,129,0.15)",color:"#34d399"}}>✓ You're Registered</span>
+                    : selectedEvent.onWaitlist
+                    ? <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(245,158,11,0.15)",color:"#fbbf24"}}>📋 You're on the Waitlist</span>
                     : selectedEvent.full
-                    ? <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(239,68,68,0.15)",color:"#f87171"}}>● Fully Booked</span>
+                    ? <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(245,158,11,0.15)",color:"#fbbf24"}}>📋 Full — Waitlist Available</span>
                     : <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{background:"rgba(16,185,129,0.15)",color:"#34d399"}}>● Open for Registration</span>}
                 </div>
 
@@ -1887,6 +2126,9 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                       🔗 Share Event
                     </button>
                   </div>
+                  <div className="mb-4">
+                    <EventAnnouncements event={selectedEvent} isHost={isCreator(selectedEvent)} showToast={showToast} load={load}/>
+                  </div>
                   <div className="text-white/35 text-xs font-semibold uppercase tracking-wider mb-2">About this event</div>
                   <p className="text-white/70 text-sm leading-relaxed">{selectedEvent.description||"No description provided."}</p>
                 </div>
@@ -1903,7 +2145,11 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
                     <span className="text-xl">📍</span>
-                    <div><div className="text-white/40 text-xs">Location</div><div className="text-white text-sm font-medium">{selectedEvent.location||"TBA"}</div></div>
+                    <div><div className="text-white/40 text-xs">Location</div><div className="text-white text-sm font-medium">
+                      {selectedEvent.hide_location && !selectedEvent.attending && !isCreator(selectedEvent)
+                        ? "📍 Revealed once your registration is approved"
+                        : (selectedEvent.location||"TBA")}
+                    </div></div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
                     <span className="text-xl">👥</span>
@@ -1912,10 +2158,13 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                       <div className="text-white text-sm font-medium">
                         {selectedEvent.cnt}{selectedEvent.max_attendees?` of ${selectedEvent.max_attendees}`:""} registered
                       </div>
-                      {/* Who's coming — Luma-style social proof */}
+                      {/* Who's coming — Luma-style social proof (host can make this private) */}
                       {(()=>{
                         const guests=(eventAttendees[selectedEvent.id]||[]).filter(g=>g&&g.name);
                         if(guests.length===0) return null;
+                        if(selectedEvent.guest_list_public===false && !isCreator(selectedEvent)){
+                          return <div className="text-white/30 text-xs mt-2">Guest list is private</div>;
+                        }
                         return (
                           <div className="flex items-center gap-2 mt-2">
                             <div className="flex" style={{marginLeft:"4px"}}>
@@ -1987,15 +2236,71 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                   </div>
                 )}
 
+                {/* Ticket (attendees) */}
+                {selectedEvent.attending&&!selectedEvent.past&&(
+                  <button onClick={()=>setShowTicket(selectedEvent)}
+                    className="w-full py-3 rounded-2xl text-white font-semibold mb-2" style={{background:"rgba(255,255,255,0.08)",border:`1px solid ${BORDER}`}}>
+                    🎟️ My Ticket (QR)
+                  </button>
+                )}
+
+                {/* Door scanner (host) */}
+                {isCreator(selectedEvent)&&!String(selectedEvent.id).startsWith("e")&&(
+                  <button onClick={()=>setShowScanner(selectedEvent)}
+                    className="w-full py-3 rounded-2xl text-white font-bold mb-2" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>
+                    📷 Scan Tickets / Check-in
+                  </button>
+                )}
+
                 {/* Action */}
                 {!selectedEvent.past&&!isCreator(selectedEvent)&&(
-                  selectedEvent.attending
-                    ? <OutlineBtn onClick={()=>{toggleAttend(selectedEvent.id);setSelectedEvent(null);}} className="w-full">✓ Cancel Registration</OutlineBtn>
-                    : <PrimaryBtn onClick={()=>{toggleAttend(selectedEvent.id);setSelectedEvent(null);}} className="w-full" disabled={!!selectedEvent.full}>
-                        {selectedEvent.full?"Event Full":"Register to Attend"}
+                  (selectedEvent.attending||selectedEvent.onWaitlist)
+                    ? <OutlineBtn onClick={()=>{toggleAttend(selectedEvent.id);setSelectedEvent(null);}} className="w-full">✓ Cancel {selectedEvent.onWaitlist?"Waitlist Spot":"Registration"}</OutlineBtn>
+                    : <PrimaryBtn onClick={()=>{
+                        if(selectedEvent.reg_question){ setQuestionPrompt(selectedEvent); return; }
+                        toggleAttend(selectedEvent.id);setSelectedEvent(null);
+                      }} className="w-full">
+                        {selectedEvent.full?"📋 Join Waitlist":"Register to Attend"}
                       </PrimaryBtn>
                 )}
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Ticket & scanner */}
+      <AnimatePresence>
+        {showTicket&&<TicketModal key="ticket" event={showTicket} userId={user?.id} onClose={()=>setShowTicket(null)}/>}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showScanner&&<CheckInScanner key="scanner" event={showScanner} showToast={showToast}
+          onCheckIn={async(uid)=>{
+            try {
+              await supabase.from("event_attendees").update({attended:true,status:"approved"}).eq("event_id",showScanner.id).eq("user_id",uid);
+              showToast("✓ Guest checked in"); load();
+            } catch(e){ showToast("Check-in failed","error"); }
+          }}
+          onClose={()=>setShowScanner(null)}/>}
+      </AnimatePresence>
+
+      {/* Registration question prompt */}
+      <AnimatePresence>
+        {questionPrompt&&(
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+            className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4"
+            onClick={e=>e.target===e.currentTarget&&setQuestionPrompt(null)}>
+            <motion.div initial={{scale:0.95,opacity:0}} animate={{scale:1,opacity:1}} className="w-full max-w-sm rounded-3xl p-6" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
+              <div className="text-white font-bold text-base mb-1">One quick question</div>
+              <div className="text-white/60 text-sm mb-4">{questionPrompt.reg_question}</div>
+              <textarea value={questionAnswer} onChange={e=>setQuestionAnswer(e.target.value)} rows={3} placeholder="Your answer"
+                className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none resize-none mb-4"
+                style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              <PrimaryBtn onClick={()=>{
+                toggleAttend(questionPrompt.id, questionAnswer);
+                setQuestionPrompt(null); setQuestionAnswer(""); setSelectedEvent(null);
+              }} className="w-full">Submit Registration</PrimaryBtn>
+              <button onClick={()=>setQuestionPrompt(null)} className="w-full text-center text-white/40 text-sm mt-2 py-1">Cancel</button>
             </motion.div>
           </motion.div>
         )}
