@@ -1412,6 +1412,223 @@ function EventAnnouncements({ event, isHost, showToast, load }){
   );
 }
 
+// ═══ FEATURED CALENDARS (Luma-style follow system) ═══
+function CalendarsStrip({ user, showToast, onFilter, activeCalendar }){
+  const [cals,setCals]=useState([]);
+  const [following,setFollowing]=useState({});
+  const [showManage,setShowManage]=useState(false);
+
+  async function load(){
+    try {
+      const {data}=await supabase.from("calendars")
+        .select("*, owner:profiles(name,avatar_url)")
+        .order("follower_count",{ascending:false}).limit(20);
+      setCals(data||[]);
+      if(user){
+        const {data:f}=await supabase.from("calendar_follows").select("calendar_id").eq("user_id",user.id);
+        const m={}; (f||[]).forEach(x=>m[x.calendar_id]=true); setFollowing(m);
+      }
+    } catch(e){ setCals([]); }
+  }
+  useEffect(()=>{ load(); },[user]);
+
+  async function toggleFollow(cal){
+    if(!user){ showToast("Sign in to follow calendars","error"); return; }
+    const isFollowing=!!following[cal.id];
+    setFollowing(f=>({...f,[cal.id]:!isFollowing})); // optimistic
+    try {
+      if(isFollowing){
+        await supabase.from("calendar_follows").delete().eq("calendar_id",cal.id).eq("user_id",user.id);
+        await supabase.from("calendars").update({follower_count:Math.max(0,(cal.follower_count||1)-1)}).eq("id",cal.id);
+      } else {
+        await supabase.from("calendar_follows").insert({calendar_id:cal.id,user_id:user.id});
+        await supabase.from("calendars").update({follower_count:(cal.follower_count||0)+1}).eq("id",cal.id);
+        showToast(`Following ${cal.name} ✓`);
+      }
+      load();
+    } catch(e){ setFollowing(f=>({...f,[cal.id]:isFollowing})); }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-white/50 text-xs font-semibold uppercase tracking-wider">Featured Calendars</div>
+        {user&&<button onClick={()=>setShowManage(true)} className="text-purple-300 text-xs font-semibold">+ Create</button>}
+      </div>
+      {cals.length===0 ? (
+        <div className="rounded-2xl p-4 text-center" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+          <div className="text-white/40 text-xs">No calendars yet.{user?" Create one to group your recurring events.":""}</div>
+        </div>
+      ) : (
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{scrollbarWidth:"none"}}>
+          {cals.map(c=>(
+            <div key={c.id} className="flex-shrink-0 rounded-2xl p-3" style={{width:"190px",
+              background:activeCalendar===c.id?"rgba(124,111,224,0.18)":"rgba(255,255,255,0.05)",
+              border:activeCalendar===c.id?"1px solid rgba(167,139,250,0.6)":`1px solid ${BORDER}`}}>
+              <button onClick={()=>onFilter(activeCalendar===c.id?null:c.id)} className="w-full text-left">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm flex-shrink-0" style={{background:c.color||"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>
+                    {c.emoji||"📅"}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-white text-xs font-bold truncate">{c.name}</div>
+                    <div className="text-white/35 text-[10px]">{c.follower_count||0} follower{(c.follower_count||0)===1?"":"s"}</div>
+                  </div>
+                </div>
+                {c.description&&<div className="text-white/45 text-[11px] leading-snug mb-2" style={{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{c.description}</div>}
+              </button>
+              <button onClick={()=>toggleFollow(c)}
+                className="w-full py-1.5 rounded-xl text-[11px] font-bold transition-colors"
+                style={following[c.id]
+                  ? {background:"rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.6)",border:`1px solid ${BORDER}`}
+                  : {background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}}>
+                {following[c.id]?"✓ Following":"+ Follow"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <AnimatePresence>
+        {showManage&&<CalendarCreate key="calcreate" user={user} showToast={showToast} onClose={()=>{setShowManage(false);load();}}/>}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function CalendarCreate({ user, showToast, onClose }){
+  const [f,setF]=useState({name:"",description:"",emoji:"📅"});
+  const [saving,setSaving]=useState(false);
+  const EMOJIS=["📅","🚀","🤖","💡","🌱","💰","🎨","⚡","🏃","🧠","🍸","🔬"];
+  async function save(){
+    if(!f.name.trim()){ showToast("Give your calendar a name","error"); return; }
+    setSaving(true);
+    try {
+      const {error}=await supabase.from("calendars").insert({
+        owner_id:user.id, name:f.name.trim(), description:f.description.trim(), emoji:f.emoji, follower_count:0
+      });
+      if(error) throw error;
+      showToast("Calendar created ✓"); onClose();
+    } catch(e){ showToast(e.message||"Could not create","error"); }
+    setSaving(false);
+  }
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      className="fixed inset-0 z-[92] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
+        className="w-full md:max-w-sm rounded-t-3xl md:rounded-3xl p-6" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
+        <div className="text-white font-bold text-lg mb-1">Create a Calendar</div>
+        <div className="text-white/45 text-sm mb-4">Group your recurring events so people can follow them.</div>
+        <div className="flex gap-1.5 flex-wrap mb-3">
+          {EMOJIS.map(e=>(
+            <button key={e} onClick={()=>setF(x=>({...x,emoji:e}))}
+              className="w-9 h-9 rounded-xl text-base flex items-center justify-center"
+              style={{background:f.emoji===e?"rgba(124,111,224,0.3)":"rgba(255,255,255,0.05)",border:f.emoji===e?"1px solid #7c6fe0":`1px solid ${BORDER}`}}>{e}</button>
+          ))}
+        </div>
+        <input value={f.name} onChange={e=>setF(x=>({...x,name:e.target.value}))} placeholder="Calendar name, e.g. Melbourne AI Meetups"
+          className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none mb-3"
+          style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+        <textarea value={f.description} onChange={e=>setF(x=>({...x,description:e.target.value}))} rows={3} placeholder="What is this calendar about?"
+          className="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none resize-none mb-4"
+          style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+        <PrimaryBtn onClick={save} loading={saving} className="w-full">Create Calendar</PrimaryBtn>
+        <button onClick={onClose} className="w-full text-center text-white/40 text-sm mt-2 py-1">Cancel</button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ═══ EVENT GROUP CHAT (attendees + host) ═══
+function EventGroupChat({ event, user, canPost, onClose }){
+  const [msgs,setMsgs]=useState([]);
+  const [text,setText]=useState("");
+  const [sending,setSending]=useState(false);
+  const bottomRef=useRef();
+
+  async function fetchMsgs(){
+    try {
+      const {data}=await supabase.from("event_messages")
+        .select("*, sender:profiles(id,name,avatar_url)")
+        .eq("event_id",event.id).order("created_at");
+      setMsgs(data||[]);
+    } catch(e){}
+  }
+  useEffect(()=>{
+    fetchMsgs();
+    const iv=setInterval(fetchMsgs,4000);
+    return ()=>clearInterval(iv);
+  },[event.id]);
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs]);
+
+  async function send(){
+    const body=text.trim(); if(!body) return;
+    setSending(true); setText("");
+    try {
+      const {error}=await supabase.from("event_messages").insert({event_id:event.id,sender_id:user.id,body});
+      if(error) throw error;
+      fetchMsgs();
+    } catch(e){ setText(body); }
+    setSending(false);
+  }
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      className="fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
+        className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl flex flex-col" style={{background:"#0f1320",border:`1px solid ${BORDER}`,height:"85vh"}}>
+        <div className="p-4 flex items-center gap-3" style={{borderBottom:`1px solid ${BORDER}`}}>
+          <div className="flex-1 min-w-0">
+            <div className="text-white font-bold text-sm truncate">💬 {event.title}</div>
+            <div className="text-white/40 text-xs">Group chat for attendees</div>
+          </div>
+          <button onClick={onClose} className="text-white/40 text-xl px-2">✕</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {msgs.length===0&&<div className="text-white/30 text-sm text-center py-8">No messages yet — say hello 👋</div>}
+          {msgs.map(m=>{
+            const mine=m.sender_id===user?.id;
+            return (
+              <div key={m.id} className={`flex gap-2 ${mine?"flex-row-reverse":""}`}>
+                <Av name={m.sender?.name} url={m.sender?.avatar_url} color={pal(m.sender_id)} size="xs"/>
+                <div className={`max-w-[75%] ${mine?"items-end":"items-start"} flex flex-col`}>
+                  {!mine&&<div className="text-white/40 text-[10px] mb-0.5 px-1">{m.sender?.name||"Member"}</div>}
+                  <div className="px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap"
+                    style={mine
+                      ? {background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}
+                      : {background:"rgba(255,255,255,0.07)",color:"rgba(255,255,255,0.85)"}}>
+                    {m.body}
+                  </div>
+                  <div className="text-white/25 text-[10px] mt-0.5 px-1">{new Date(m.created_at).toLocaleTimeString("en-AU",{hour:"numeric",minute:"2-digit"})}</div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef}/>
+        </div>
+
+        {canPost ? (
+          <div className="p-3 flex gap-2" style={{borderTop:`1px solid ${BORDER}`}}>
+            <input value={text} onChange={e=>setText(e.target.value)}
+              onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } }}
+              placeholder="Message attendees…"
+              className="flex-1 rounded-2xl px-4 py-2.5 text-white placeholder-white/25 focus:outline-none"
+              style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+            <button onClick={send} disabled={sending||!text.trim()}
+              className="px-4 rounded-2xl text-white font-bold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",opacity:(sending||!text.trim())?0.5:1}}>↑</button>
+          </div>
+        ) : (
+          <div className="p-4 text-center text-white/35 text-xs" style={{borderTop:`1px solid ${BORDER}`}}>
+            Register and get approved to join the conversation
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs }) {
   const [events, setEvents] = useState([]);
   const [attSet, setAttSet] = useState({});
@@ -1432,9 +1649,12 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
   const [questionAnswer, setQuestionAnswer] = useState("");
   const [showTicket, setShowTicket] = useState(null);
   const [showScanner, setShowScanner] = useState(null);
+  const [calFilter, setCalFilter] = useState(null);
+  const [groupChat, setGroupChat] = useState(null);
+  const [myCalendars, setMyCalendars] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [uploadingCover, setUploadingCover] = useState(false);
-  const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false});
+  const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false,calendar_id:""});
   const coverInputRef = useRef();
 
   async function load() {
@@ -1471,12 +1691,17 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
     setLoading(false);
   }
   useEffect(()=>{ load(); },[user]);
+  useEffect(()=>{
+    if(!user) return;
+    supabase.from("calendars").select("id,name,emoji").eq("owner_id",user.id)
+      .then(({data})=>setMyCalendars(data||[])).catch(()=>{});
+  },[user]);
 
   function openCreate() {
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     setEditingId(null);
-    setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false});
+    setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false,calendar_id:""});
     setShowForm(true);
   }
 
@@ -1486,7 +1711,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
       title:ev.title||"", description:ev.description||"", location:ev.location||"",
       event_date:ev.event_date?new Date(ev.event_date).toISOString().slice(0,16):"",
       max_attendees:ev.max_attendees||"", industry_tags:ev.industry_tags||[], cover_url:ev.cover_url||"",
-      reg_question:ev.reg_question||"", guest_list_public:ev.guest_list_public!==false, hide_location:!!ev.hide_location
+      reg_question:ev.reg_question||"", guest_list_public:ev.guest_list_public!==false, hide_location:!!ev.hide_location, calendar_id:ev.calendar_id||""
     });
     setSelectedEvent(null);
     setShowForm(true);
@@ -1508,7 +1733,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
     if(!form.title||!form.event_date){showToast("Title & date required","error");return;}
     setSaving(true);
     try {
-      const payload={title:form.title,description:form.description,location:form.location,event_date:form.event_date,max_attendees:parseInt(form.max_attendees)||null,industry_tags:form.industry_tags,cover_url:form.cover_url||null,reg_question:form.reg_question||null,guest_list_public:form.guest_list_public!==false,hide_location:!!form.hide_location};
+      const payload={title:form.title,description:form.description,location:form.location,event_date:form.event_date,max_attendees:parseInt(form.max_attendees)||null,industry_tags:form.industry_tags,cover_url:form.cover_url||null,reg_question:form.reg_question||null,guest_list_public:form.guest_list_public!==false,hide_location:!!form.hide_location,calendar_id:form.calendar_id||null};
       if(editingId){
         await supabase.from("events").update(payload).eq("id",editingId);
         showToast("Event updated ✓");
@@ -1518,7 +1743,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
         if(!isAdmin && user.email) sendEmail("event_created", user.email, { title: payload.title });
       }
       setShowForm(false); setEditingId(null);
-      setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false});
+      setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false,calendar_id:""});
       load();
     } catch(e){showToast(e.message,"error");}
     setSaving(false);
@@ -1612,6 +1837,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
   const filtered = events.filter(ev=>{
     const q=search.toLowerCase();
     const matchesSearch = !search || (ev.title||"").toLowerCase().includes(q)||(ev.description||"").toLowerCase().includes(q)||(ev.location||"").toLowerCase().includes(q)||(ev.industry_tags||[]).some(t=>String(t).toLowerCase().includes(q));
+    if(calFilter && ev.calendar_id !== calFilter) return false;
     const matchesState = !filterState || (ev.location||"").toUpperCase().includes(filterState);
     let matchesDate = true;
     if(filterDate){
@@ -1735,6 +1961,26 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                   className="w-full rounded-2xl px-4 py-3 text-sm text-white focus:outline-none"
                   style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,colorScheme:"dark"}}/>
               </div>
+              {myCalendars.length>0&&(
+                <div className="space-y-1.5">
+                  <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Add to Calendar (optional)</label>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={()=>setForm(f=>({...f,calendar_id:""}))}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold"
+                      style={{background:!form.calendar_id?"rgba(124,111,224,0.3)":"rgba(255,255,255,0.05)",border:!form.calendar_id?"1px solid #7c6fe0":`1px solid ${BORDER}`,color:!form.calendar_id?"#c4b5fd":"rgba(255,255,255,0.5)"}}>
+                      None
+                    </button>
+                    {myCalendars.map(c=>(
+                      <button key={c.id} onClick={()=>setForm(f=>({...f,calendar_id:c.id}))}
+                        className="px-3 py-2 rounded-xl text-xs font-semibold"
+                        style={{background:form.calendar_id===c.id?"rgba(124,111,224,0.3)":"rgba(255,255,255,0.05)",border:form.calendar_id===c.id?"1px solid #7c6fe0":`1px solid ${BORDER}`,color:form.calendar_id===c.id?"#c4b5fd":"rgba(255,255,255,0.5)"}}>
+                        {c.emoji} {c.name}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-white/25 text-xs">Followers of that calendar will discover this event.</p>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Registration Question (optional)</label>
                 <input value={form.reg_question} onChange={e=>setForm(f=>({...f,reg_question:e.target.value}))} placeholder="e.g. Any dietary requirements?"
@@ -1795,6 +2041,9 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
           <button onClick={()=>{setSearch("");setFilterState("");setFilterDate("");}} className="text-white/40 text-xs hover:text-white/70 transition-colors">✕ Clear filters</button>
         )}
       </Card>
+
+      {/* Featured Calendars (follow system) */}
+      <CalendarsStrip user={user} showToast={showToast} onFilter={setCalFilter} activeCalendar={calFilter}/>
 
       {/* ═══ DISCOVER: Browse by Category & City (Luma-style) ═══ */}
       {(()=>{
@@ -2236,6 +2485,14 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                   </div>
                 )}
 
+                {/* Group chat */}
+                {!String(selectedEvent.id).startsWith("e")&&(selectedEvent.attending||isCreator(selectedEvent))&&(
+                  <button onClick={()=>setGroupChat(selectedEvent)}
+                    className="w-full py-3 rounded-2xl text-white font-semibold mb-2" style={{background:"rgba(255,255,255,0.08)",border:`1px solid ${BORDER}`}}>
+                    💬 Event Group Chat
+                  </button>
+                )}
+
                 {/* Ticket (attendees) */}
                 {selectedEvent.attending&&!selectedEvent.past&&(
                   <button onClick={()=>setShowTicket(selectedEvent)}
@@ -2267,6 +2524,13 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Event group chat */}
+      <AnimatePresence>
+        {groupChat&&<EventGroupChat key="gchat" event={groupChat} user={user}
+          canPost={attSet[groupChat.id]==="approved"||groupChat.creator_id===user?.id}
+          onClose={()=>setGroupChat(null)}/>}
       </AnimatePresence>
 
       {/* Ticket & scanner */}
