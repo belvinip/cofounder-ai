@@ -333,8 +333,7 @@ function SearchBar({ value, onChange, placeholder }) {
 function PrimaryBtn({ children, onClick, loading, disabled, className="", small=false }) {
   return (
     <motion.button onClick={onClick} disabled={loading||disabled} whileHover={{scale:disabled?1:1.02}} whileTap={{scale:disabled?1:0.97}}
-      className={`flex items-center justify-center gap-2 font-semibold text-white rounded-2xl transition-all disabled:opacity-50 ${small?"px-5 py-2.5 text-sm":"px-6 py-3.5 text-sm"} ${className}`}
-      style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",boxShadow:"0 4px 20px rgba(124,111,224,0.35)"}}>
+      className={`abaa-gradient flex items-center justify-center gap-2 font-semibold text-white rounded-2xl transition-all disabled:opacity-50 ${small?"px-5 py-2.5 text-sm":"px-6 py-3.5 text-sm"} ${className}`}>
       {loading&&<svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>}
       {children}
     </motion.button>
@@ -351,9 +350,10 @@ function OutlineBtn({ children, onClick, className="", small=false }) {
   );
 }
 
-function Card({ children, className="", onClick }) {
+function Card({ children, className="", onClick, style }) {
   return (
-    <div onClick={onClick} className={`rounded-3xl ${className}`} style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
+    <div onClick={onClick} className={`abaa-lift rounded-3xl ${className}`}
+      style={{background:CARD_BG,border:`1px solid ${BORDER}`,...(style||{})}}>
       {children}
     </div>
   );
@@ -887,6 +887,57 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
 
 // MATCH TAB
 // ════════════════════════════════════════════════════════
+// ═══ CONNECTION LABELS (how you met) ═══
+const MEET_LABELS = [
+  {id:"event",  emoji:"🎟️", name:"Met at an event"},
+  {id:"card",   emoji:"💳", name:"Scanned their card"},
+  {id:"intro",  emoji:"🤝", name:"Warm intro"},
+  {id:"online", emoji:"💬", name:"Met online"},
+  {id:"project",emoji:"🚀", name:"Project collaborator"},
+  {id:"investor",emoji:"💰", name:"Investor / advisor"},
+  {id:"client", emoji:"📋", name:"Client / prospect"},
+];
+const labelOf = (id) => MEET_LABELS.find(l=>l.id===id);
+
+function ConnectionLabelPicker({ matchId, current, onSaved, showToast }){
+  const [open,setOpen]=useState(false);
+  const cur = labelOf(current);
+  async function pick(id){
+    try {
+      await supabase.from("match_requests").update({meet_label:id||null}).eq("id",matchId);
+      onSaved&&onSaved(id);
+      showToast&&showToast(id?`Labelled: ${labelOf(id).name} ✓`:"Label removed");
+    } catch(e){ showToast&&showToast("Could not save label","error"); }
+    setOpen(false);
+  }
+  return (
+    <div className="relative">
+      <button onClick={(e)=>{e.stopPropagation();setOpen(o=>!o);}}
+        className="px-2.5 py-1 rounded-full text-[10px] font-semibold transition-colors"
+        style={cur
+          ? {background:"rgba(124,111,224,0.2)",color:"#c4b5fd",border:"1px solid rgba(167,139,250,0.4)"}
+          : {background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",border:`1px solid ${BORDER}`}}>
+        {cur?`${cur.emoji} ${cur.name}`:"+ Label"}
+      </button>
+      {open&&(
+        <>
+          <div className="fixed inset-0 z-[70]" onClick={(e)=>{e.stopPropagation();setOpen(false);}}/>
+          <div className="absolute right-0 mt-1 z-[71] rounded-2xl p-1.5 w-52" style={{background:"#151a2b",border:`1px solid ${BORDER}`,boxShadow:"0 12px 32px rgba(0,0,0,0.6)"}}>
+            {MEET_LABELS.map(l=>(
+              <button key={l.id} onClick={(e)=>{e.stopPropagation();pick(l.id);}}
+                className="w-full text-left px-3 py-2 rounded-xl text-xs text-white/75 hover:bg-white/10 transition-colors">
+                {l.emoji} {l.name}
+              </button>
+            ))}
+            {current&&<button onClick={(e)=>{e.stopPropagation();pick(null);}}
+              className="w-full text-left px-3 py-2 rounded-xl text-xs text-red-400/70 hover:bg-white/10">✕ Remove label</button>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs }) {
   const [search, setSearch] = useState("");
   const [filterIndustry, setFilterIndustry] = useState("");
@@ -915,12 +966,27 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
     if(error){showToast(error.message,"error");return;}
     showToast(status==="accepted"?"Match accepted! You can now chat ✓":"Request declined");
     if(status==="accepted"){
-      // Notify the original requester that they were accepted
       const req=incomingReqs.find(r=>r.id===reqId);
       const senderId=req?.from_user_id;
       if(senderId){
-        try { const {data:sender}=await supabase.from("profiles").select("email").eq("id",senderId).maybeSingle();
-          if(sender?.email) sendEmail("partner_accepted", sender.email, { byName: profile?.name||"Your match" });
+        try {
+          const {data:sender}=await supabase.from("profiles").select("*").eq("id",senderId).maybeSingle();
+          const origin=window.location.origin;
+          // Both parties get a "we're connected" email with each other's details + booking link
+          const meCard = {
+            name: profile?.name, role: profile?.role, email: profile?.email, mobile: profile?.mobile,
+            whatsapp: profile?.whatsapp, linkedin: profile?.linkedin_url, website: profile?.website_url,
+            card: `${origin}?card=${user.id}`,
+            booking: profile?.booking_enabled ? `${origin}?card=${user.id}` : null,
+          };
+          const themCard = {
+            name: sender?.name, role: sender?.role, email: sender?.email, mobile: sender?.mobile,
+            whatsapp: sender?.whatsapp, linkedin: sender?.linkedin_url, website: sender?.website_url,
+            card: `${origin}?card=${senderId}`,
+            booking: sender?.booking_enabled ? `${origin}?card=${senderId}` : null,
+          };
+          if(sender?.email) sendEmail("now_connected", sender.email, { youName: sender?.name, contact: meCard });
+          if(profile?.email) sendEmail("now_connected", profile.email, { youName: profile?.name, contact: themCard });
         } catch(e){}
       }
     }
@@ -1229,16 +1295,19 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {acceptedConnections.map(({req,other})=>(
-                <button key={req.id} onClick={()=>{setShowAllMessages(false);setChat({matchId:req.id,other});}}
-                  className="w-full flex items-center gap-3 p-3 rounded-2xl transition-all hover:border-white/20 text-left"
+                <div key={req.id}
+                  className="w-full flex items-center gap-3 p-3 rounded-2xl transition-all"
                   style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
-                  <Av name={other.name} url={other.avatar_url} color={pal(other.id)} size="sm" ring/>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-white font-semibold text-sm truncate">{other.name}</div>
-                    <div className="text-white/40 text-xs truncate">{other.role||"Tap to open chat"}</div>
-                  </div>
-                  <span className="text-white/30 text-lg">💬</span>
-                </button>
+                  <button onClick={()=>{setShowAllMessages(false);setChat({matchId:req.id,other});}} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                    <Av name={other.name} url={other.avatar_url} color={pal(other.id)} size="sm" ring/>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white font-semibold text-sm truncate">{other.name}</div>
+                      <div className="text-white/40 text-xs truncate">{other.role||"Tap to open chat"}</div>
+                    </div>
+                  </button>
+                  <ConnectionLabelPicker matchId={req.id} current={req.meet_label} showToast={showToast}
+                    onSaved={(id)=>{ req.meet_label=id; setMatchMap(m=>({...m})); }}/>
+                </div>
               ))}
             </div>
           </motion.div>
@@ -4073,7 +4142,26 @@ function BusinessCardPage({ userId }) {
     if(p.website_url) lines.push(`URL:${p.website_url}`);
     if(p.linkedin_url) lines.push(`URL;TYPE=LinkedIn:${p.linkedin_url}`);
     if(p.location) lines.push(`ADR;TYPE=WORK:;;${p.location};;;;Australia`);
-    if(p.wechat) lines.push(`NOTE:WeChat: ${p.wechat}`);
+    // Businesses
+    let bizArr=[]; try { bizArr = Array.isArray(p.businesses)?p.businesses:(p.businesses?JSON.parse(p.businesses):[]); } catch(e){}
+    if(bizArr.length){
+      const b0=bizArr[0];
+      if(b0?.name && !p.business_name) lines.push(`ORG:${b0.name}`);
+      if(b0?.website) lines.push(`URL;TYPE=Business:${b0.website}`);
+      if(b0?.address) lines.push(`ADR;TYPE=WORK:;;${b0.address};;;;`);
+    }
+    // Profile photo embedded so it saves into the phone contact
+    if(p.avatar_url) lines.push(`PHOTO;VALUE=URI:${p.avatar_url}`);
+    // Everything else into NOTE so nothing is lost
+    const notes=[];
+    if(p.headline) notes.push(p.headline);
+    if(p.bio) notes.push(p.bio);
+    if(p.wechat) notes.push(`WeChat: ${p.wechat}`);
+    if((p.skills||[]).length) notes.push(`Skills: ${(p.skills||[]).join(", ")}`);
+    if(bizArr.length>1) notes.push(`Also: ${bizArr.slice(1).map(b=>b.name).filter(Boolean).join(", ")}`);
+    bizArr.forEach(b=>{ if(b?.services) notes.push(`${b.name||"Business"}: ${b.services}`); });
+    notes.push(`ABAA profile: ${window.location.origin}?card=${p.id}`);
+    if(notes.length) lines.push(`NOTE:${notes.join("\\n").replace(/\r?\n/g,"\\n")}`);
     lines.push("END:VCARD");
     const blob=new Blob([lines.join("\r\n")],{type:"text/vcard;charset=utf-8"});
     const u=URL.createObjectURL(blob);
@@ -4178,6 +4266,13 @@ function BusinessCardPage({ userId }) {
               <button onClick={()=>setShowBooking(true)} className="w-full py-3 rounded-2xl text-white font-bold" style={{background:brandGrad,boxShadow:`0 8px 24px ${brandHex}55`}}>📅 Book a meeting</button>
             )}
             <button onClick={saveContact} className="w-full py-3 rounded-2xl text-white font-semibold" style={{background:p.booking_enabled?"rgba(255,255,255,0.08)":brandGrad,border:p.booking_enabled?`1px solid ${BORDER}`:"none"}}>💾 Save to Contacts</button>
+
+            {/* Connect on ABAA — view full profile & connect */}
+            <a href={`${window.location.origin}?connect=${p.id}`}
+              className="block w-full text-center py-3 rounded-2xl text-white font-bold"
+              style={{background:brandGrad,boxShadow:`0 8px 24px ${brandHex}55`}}>
+              🤝 Connect with {(p.name||"them").split(" ")[0]} on ABAA
+            </a>
 
             {/* Two-way: share details back */}
             <button onClick={()=>setShowExchange(true)} className="w-full py-3 rounded-2xl text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white"}}>
@@ -4410,6 +4505,12 @@ export default function App() {
   // ── Public Digital Business Card route — no login required ──
   const cardId = new URLSearchParams(window.location.search).get("card");
   if(cardId) return <BusinessCardPage userId={cardId}/>;
+
+  // ── Connect deep-link from a scanned card: open Match tab ──
+  try {
+    const cId = new URLSearchParams(window.location.search).get("connect");
+    if(cId && !window.__abaaConnectHandled){ window.__abaaConnectHandled = cId; }
+  } catch(e){}
 
   // ── Public Event page — no login required ──
   const publicEventId = new URLSearchParams(window.location.search).get("event");
@@ -4668,10 +4769,10 @@ export default function App() {
             return (
               <button key={n.id} onClick={()=>goTab(n.id,n.auth)}
                 className="flex flex-col items-center gap-1 px-4 py-1 rounded-2xl transition-all min-w-[56px] relative">
-                <span className="relative" style={{color:active?"#a78bfa":"rgba(255,255,255,0.35)"}}>
+                <motion.span className="relative" animate={{scale:active?1.15:1,y:active?-1:0}} transition={{type:"spring",stiffness:400,damping:20}} style={{color:active?"#a78bfa":"rgba(255,255,255,0.35)",display:"inline-block"}}>
                   {n.icon(active)}
-                  {badge>0&&<span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{background:"#ef4444"}}>{badge>9?"9+":badge}</span>}
-                </span>
+                  {badge>0&&<span className="abaa-pulse absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{background:"#ef4444"}}>{badge>9?"9+":badge}</span>}
+                </motion.span>
                 <span className="text-[10px] font-semibold" style={{color:active?"#a78bfa":"rgba(255,255,255,0.35)"}}>{n.label}</span>
               </button>
             );
