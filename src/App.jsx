@@ -938,7 +938,7 @@ function ConnectionLabelPicker({ matchId, current, onSaved, showToast }){
   );
 }
 
-function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs }) {
+function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs, connectId }) {
   const [search, setSearch] = useState("");
   const [filterIndustry, setFilterIndustry] = useState("");
   const [filterRole, setFilterRole] = useState("");
@@ -948,6 +948,7 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
   const [chat, setChat] = useState(null);
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState(null);
+  const connectOpenedRef = useRef(false);
   const [incomingReqs, setIncomingReqs] = useState([]);
 
   async function loadRequests() {
@@ -996,7 +997,16 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
   useEffect(()=>{
     // Load ALL approved profiles (needed so admins appear in Core Members)
     supabase.from("profiles").select("*").eq("is_approved",true)
-      .then(({data,error})=>{ if(!error&&data?.length) setRealProfiles(data); }).catch(()=>{});
+      .then(({data,error})=>{
+        if(!error&&data?.length){
+          setRealProfiles(data);
+          // Deep-link: open the scanned person's profile so the user can connect
+          if(connectId && !connectOpenedRef.current){
+            const target=data.find(p=>p.id===connectId);
+            if(target){ connectOpenedRef.current=true; setSelectedProfile(target); }
+          }
+        }
+      }).catch(()=>{});
     loadRequests();
   },[user]);
 
@@ -1324,6 +1334,10 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
 // ════════════════════════════════════════════════════════
 // ═══ QR CHECK-IN (Luma-style ticket + door scanner) ═══
 function ticketCode(eventId, userId){ return `ABAA-TICKET:${eventId}:${userId}`; }
+// Short code a host can type in manually at the door
+function shortTicketCode(eventId, userId){
+  return `${String(eventId).replace(/-/g,"").slice(0,4)}-${String(userId).replace(/-/g,"").slice(0,4)}`.toUpperCase();
+}
 function ticketQrUrl(eventId, userId){
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(ticketCode(eventId,userId))}`;
 }
@@ -1338,14 +1352,18 @@ function TicketModal({ event, userId, onClose }){
         <div className="inline-block p-3 rounded-2xl" style={{background:"#fff"}}>
           <img src={ticketQrUrl(event.id,userId)} alt="Ticket QR" width={180} height={180}/>
         </div>
-        <p className="text-white/35 text-xs mt-4">Show this at the door for quick check-in</p>
+        <div className="mt-4">
+          <div className="text-white/35 text-[10px] uppercase tracking-wider mb-1">Ticket Code</div>
+          <div className="text-white font-bold text-lg tracking-widest">{shortTicketCode(event.id,userId)}</div>
+        </div>
+        <p className="text-white/35 text-xs mt-3">Show the QR at the door, or give this code to the host</p>
         <button onClick={onClose} className="mt-5 w-full py-3 rounded-2xl text-white font-semibold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>Done</button>
       </motion.div>
     </motion.div>
   );
 }
 
-function CheckInScanner({ event, onCheckIn, onClose, showToast }){
+function CheckInScanner({ event, onCheckIn, onCheckInByShortCode, onClose, showToast }){
   const videoRef=useRef(); const [status,setStatus]=useState("Point camera at a ticket QR");
   const [manual,setManual]=useState(""); const [supported,setSupported]=useState(true);
   useEffect(()=>{
@@ -1393,7 +1411,20 @@ function CheckInScanner({ event, onCheckIn, onClose, showToast }){
               <div className="w-56 h-56 rounded-3xl" style={{border:"3px solid rgba(167,139,250,0.8)"}}/>
             </div>
           </div>
-          <div className="p-5 text-center text-white/70 text-sm">{status}</div>
+          <div className="p-5 space-y-3">
+            <div className="text-center text-white/70 text-sm">{status}</div>
+            <div className="flex gap-2">
+              <input value={manual} onChange={e=>setManual(e.target.value)} placeholder="Or type ticket code (e.g. A1B2-C3D4)"
+                className="flex-1 rounded-2xl px-4 py-2.5 text-white placeholder-white/25 focus:outline-none"
+                style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              <button onClick={()=>{
+                const v=manual.trim();
+                if(v.startsWith(`ABAA-TICKET:${event.id}:`)){ onCheckIn(v.split(":")[2]); setManual(""); }
+                else if(onCheckInByShortCode(v)){ setManual(""); }
+                else showToast("That code doesn't match a guest for this event","error");
+              }} className="px-4 rounded-2xl text-white font-bold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>✓</button>
+            </div>
+          </div>
         </>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
@@ -1402,8 +1433,10 @@ function CheckInScanner({ event, onCheckIn, onClose, showToast }){
             className="w-full max-w-xs rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none mb-3"
             style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
           <button onClick={()=>{
-            if(manual.startsWith(`ABAA-TICKET:${event.id}:`)){ onCheckIn(manual.split(":")[2]); showToast("✓ Checked in!"); setManual(""); }
-            else showToast("That doesn't look like a valid ticket for this event","error");
+            const v=manual.trim();
+            if(v.startsWith(`ABAA-TICKET:${event.id}:`)){ onCheckIn(v.split(":")[2]); setManual(""); }
+            else if(onCheckInByShortCode(v)) { setManual(""); }
+            else showToast("That code doesn't match a guest for this event","error");
           }} className="px-6 py-3 rounded-2xl text-white font-semibold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>Check In</button>
         </div>
       )}
@@ -1613,6 +1646,7 @@ function EventGroupChat({ event, user, canPost, onClose }){
   const [msgs,setMsgs]=useState([]);
   const [text,setText]=useState("");
   const [sending,setSending]=useState(false);
+  const [err,setErr]=useState("");
   const bottomRef=useRef();
 
   async function fetchMsgs(){
@@ -1637,7 +1671,11 @@ function EventGroupChat({ event, user, canPost, onClose }){
       const {error}=await supabase.from("event_messages").insert({event_id:event.id,sender_id:user.id,body});
       if(error) throw error;
       fetchMsgs();
-    } catch(e){ setText(body); }
+    } catch(e){
+      setText(body);
+      setErr(e.message||"Could not send — you may need to be an approved attendee");
+      setTimeout(()=>setErr(""),5000);
+    }
     setSending(false);
   }
 
@@ -1679,7 +1717,9 @@ function EventGroupChat({ event, user, canPost, onClose }){
         </div>
 
         {canPost ? (
-          <div className="p-3 flex gap-2" style={{borderTop:`1px solid ${BORDER}`}}>
+          <div className="p-3" style={{borderTop:`1px solid ${BORDER}`}}>
+            {err&&<div className="text-red-400 text-xs mb-2 px-1">{err}</div>}
+            <div className="flex gap-2">
             <input value={text} onChange={e=>setText(e.target.value)}
               onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } }}
               placeholder="Message attendees…"
@@ -1687,6 +1727,7 @@ function EventGroupChat({ event, user, canPost, onClose }){
               style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
             <button onClick={send} disabled={sending||!text.trim()}
               className="px-4 rounded-2xl text-white font-bold" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",opacity:(sending||!text.trim())?0.5:1}}>↑</button>
+            </div>
           </div>
         ) : (
           <div className="p-4 text-center text-white/35 text-xs" style={{borderTop:`1px solid ${BORDER}`}}>
@@ -1881,7 +1922,13 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
         await supabase.from("event_attendees").update({status:"approved"}).eq("event_id",evId).eq("user_id",userId); showToast("Attendee approved ✓");
         const ev=events.find(e=>e.id===evId);
         try { const {data:att}=await supabase.from("profiles").select("email").eq("id",userId).maybeSingle();
-          if(att?.email) sendEmail("event_approved", att.email, { title: ev?.title });
+          if(att?.email) sendEmail("event_approved", att.email, {
+            title: ev?.title,
+            when: ev?.event_date ? new Date(ev.event_date).toLocaleString("en-AU",{weekday:"long",day:"numeric",month:"long",hour:"numeric",minute:"2-digit"}) : "",
+            location: ev?.hide_location ? (ev?.location||"") : (ev?.location||""),
+            code: shortTicketCode(evId, userId),
+            qr: ticketQrUrl(evId, userId),
+          });
         } catch(e){}
       }
       else { await supabase.from("event_attendees").delete().eq("event_id",evId).eq("user_id",userId); showToast("Registration declined"); promoteFromWaitlist(evId); }
@@ -2611,8 +2658,28 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
           onCheckIn={async(uid)=>{
             try {
               await supabase.from("event_attendees").update({attended:true,status:"approved"}).eq("event_id",showScanner.id).eq("user_id",uid);
-              showToast("✓ Guest checked in"); load();
+              const {data:g}=await supabase.from("profiles").select("name,email").eq("id",uid).maybeSingle();
+              const when=new Date().toLocaleString("en-AU",{day:"numeric",month:"short",hour:"numeric",minute:"2-digit"});
+              if(g?.email) sendEmail("checked_in", g.email, { title:showScanner.title, when, who:"you" });
+              if(user?.email) sendEmail("checked_in", user.email, { title:showScanner.title, when, who:g?.name||"A guest" });
+              showToast(`✓ ${g?.name||"Guest"} checked in`); load();
             } catch(e){ showToast("Check-in failed","error"); }
+          }}
+          onCheckInByShortCode={(code)=>{
+            const all=[...(eventAttendees[showScanner.id]||[]),...(pendingAtt[showScanner.id]||[])];
+            const match=all.find(g=>g&&shortTicketCode(showScanner.id,g.id).toUpperCase()===String(code).toUpperCase());
+            if(!match) return false;
+            (async()=>{
+              try {
+                await supabase.from("event_attendees").update({attended:true,status:"approved"}).eq("event_id",showScanner.id).eq("user_id",match.id);
+                const when=new Date().toLocaleString("en-AU",{day:"numeric",month:"short",hour:"numeric",minute:"2-digit"});
+                const {data:g}=await supabase.from("profiles").select("email").eq("id",match.id).maybeSingle();
+                if(g?.email) sendEmail("checked_in", g.email, { title:showScanner.title, when, who:"you" });
+                if(user?.email) sendEmail("checked_in", user.email, { title:showScanner.title, when, who:match.name||"A guest" });
+                showToast(`✓ ${match.name||"Guest"} checked in`); load();
+              } catch(e){ showToast("Check-in failed","error"); }
+            })();
+            return true;
           }}
           onClose={()=>setShowScanner(null)}/>}
       </AnimatePresence>
@@ -4518,9 +4585,14 @@ export default function App() {
 
   const [session,setSession]=useState(undefined);
   const [profile,setProfile]=useState(null);
+  const connectId = (()=>{ try { return new URLSearchParams(window.location.search).get("connect"); } catch(e){ return null; } })();
   const [tab,setTab]=useState(()=>{
     // Deep-link from booking emails: ?bookings=1 opens the Profile tab (where bookings live)
-    try { if(new URLSearchParams(window.location.search).get("bookings")) return "profile"; } catch(e){}
+    try {
+      const sp=new URLSearchParams(window.location.search);
+      if(sp.get("bookings")) return "profile";
+      if(sp.get("connect")) return "matching";
+    } catch(e){}
     return "events";
   });
   const [notif,setNotif]=useState({partner:0,project:0,events:0,messages:0});
@@ -4751,7 +4823,7 @@ export default function App() {
                 <GoogleIcon/> Sign In to Continue
               </PrimaryBtn>
             </motion.div>
-          ):tab==="matching"?<MatchTab key="m" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
+          ):tab==="matching"?<MatchTab key="m" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs} connectId={connectId}/>
           :tab==="events"?<EventsTab key="e" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
           :tab==="projects"?<ProjectsTab key="pr" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
           :tab==="profile"?<ProfileTab key="p" user={user} profile={effectiveProfile} setProfile={setEffectiveProfile} showToast={showToast} isApproved={isApproved}/>
