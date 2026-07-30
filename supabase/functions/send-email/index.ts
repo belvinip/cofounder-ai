@@ -40,11 +40,6 @@ function buildEmail(type: string, data: any): { subject: string; html: string } 
         html: wrap(`Welcome, ${data.name || "there"}!`,
           `You've joined the ABAA founder community — where founders find co-founders, partners, and collaborators.<br><br>Complete your profile to start matching and unlock your free digital business card.`,
           cta("Complete your profile", "")) };
-    case "signin":
-      return { subject: "New sign-in to your ABAA account",
-        html: wrap(`Welcome back, ${data.name || "there"}`,
-          `You just signed in to ABAA Community. If this was you, no action is needed.<br><br>If you don't recognise this sign-in, please review your account security.`,
-          cta("Open ABAA", "")) };
     case "event_created":
       return { subject: "Your event was submitted ✓",
         html: wrap("Event submitted for review",
@@ -61,10 +56,40 @@ function buildEmail(type: string, data: any): { subject: string; html: string } 
           `You registered for <strong>${data.title || "an event"}</strong>. The host will review your registration and confirm your spot.`,
           cta("View event", "")) };
     case "event_approved":
-      return { subject: "You're confirmed! 🎟️",
-        html: wrap("Registration approved",
-          `Great news — the host approved your spot for <strong>${data.title || "the event"}</strong>. See you there!`,
+      return { subject: `🎟️ You're confirmed — ${data.title || "event"}`,
+        html: wrap("Registration approved!",
+          `You're confirmed for <strong>${data.title || "the event"}</strong>.
+           <div style="background:#0d1120;border:1px solid #232a42;border-radius:14px;padding:16px;margin:18px 0;text-align:center;">
+             ${data.when ? `<div style="color:#fff;font-size:15px;margin-bottom:6px;">📅 ${data.when}</div>` : ""}
+             ${data.location ? `<div style="color:#8b93ab;font-size:14px;margin-bottom:14px;">📍 ${data.location}</div>` : ""}
+             ${data.qr ? `<img src="${data.qr}" alt="Ticket QR" width="180" height="180" style="background:#fff;padding:10px;border-radius:12px;"/>` : ""}
+             <div style="color:#8b93ab;font-size:11px;letter-spacing:1px;margin-top:14px;">TICKET CODE</div>
+             <div style="color:#fff;font-size:20px;font-weight:700;letter-spacing:3px;">${data.code || ""}</div>
+           </div>
+           Show the QR code at the door, or give the host your ticket code.`,
           cta("View event", "")) };
+    case "checked_in":
+      return { subject: `✅ Checked in — ${data.title || "event"}`,
+        html: wrap("Check-in confirmed",
+          `${data.who === "you" ? "You have been" : `<strong>${data.who}</strong> has been`} checked in to <strong>${data.title || "the event"}</strong> at ${data.when || "just now"}.`,
+          cta("View event", "")) };
+    case "now_connected":
+      return { subject: `🤝 You're connected with ${data.contact?.name || "a new contact"}`,
+        html: wrap(`You're connected!`,
+          `You and <strong>${data.contact?.name || "your new contact"}</strong> are now connected on ABAA Community. Here are their details:
+           <div style="background:#0d1120;border:1px solid #232a42;border-radius:14px;padding:16px;margin:18px 0;">
+             <div style="color:#fff;font-size:16px;font-weight:600;">${data.contact?.name || ""}</div>
+             ${data.contact?.role ? `<div style="color:#8b93ab;font-size:13px;margin-bottom:10px;">${data.contact.role}</div>` : ""}
+             ${data.contact?.email ? `<div style="color:#b8c0d8;font-size:14px;">✉️ ${data.contact.email}</div>` : ""}
+             ${data.contact?.mobile ? `<div style="color:#b8c0d8;font-size:14px;">📱 ${data.contact.mobile}</div>` : ""}
+             ${data.contact?.whatsapp ? `<div style="color:#b8c0d8;font-size:14px;">💬 WhatsApp: ${data.contact.whatsapp}</div>` : ""}
+             ${data.contact?.linkedin ? `<div style="color:#b8c0d8;font-size:14px;">🔗 ${data.contact.linkedin}</div>` : ""}
+             ${data.contact?.website ? `<div style="color:#b8c0d8;font-size:14px;">🌐 ${data.contact.website}</div>` : ""}
+           </div>
+           ${data.contact?.booking ? `Ready for a proper catch-up? Book a time that suits you both.` : `Their full digital card has everything else you need.`}`,
+          data.contact?.booking
+            ? { label:"📅 Book a catch-up", url:data.contact.booking }
+            : { label:"💳 View their card", url:data.contact?.card || APP_URL }) };
     case "new_registration":
       return { subject: "New registration for your event",
         html: wrap("Someone wants to attend",
