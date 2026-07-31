@@ -1345,7 +1345,7 @@ function ticketQrUrl(eventId, userId){
 function TicketModal({ event, userId, onClose }){
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/85 p-4" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/85 p-4 pb-[calc(80px+env(safe-area-inset-bottom,0px))] md:pb-4" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="w-full max-w-xs rounded-3xl p-6 text-center" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
         <div className="text-white font-bold text-lg mb-1">Your Ticket</div>
         <div className="text-white/50 text-sm mb-4">{event.title}</div>
@@ -1411,7 +1411,7 @@ function CheckInScanner({ event, onCheckIn, onCheckInByShortCode, onClose, showT
               <div className="w-56 h-56 rounded-3xl" style={{border:"3px solid rgba(167,139,250,0.8)"}}/>
             </div>
           </div>
-          <div className="p-5 space-y-3">
+          <div className="p-5 pb-[calc(80px+env(safe-area-inset-bottom,0px))] md:pb-5 space-y-3">
             <div className="text-center text-white/70 text-sm">{status}</div>
             <div className="flex gap-2">
               <input value={manual} onChange={e=>setManual(e.target.value)} placeholder="Or type ticket code (e.g. A1B2-C3D4)"
@@ -1427,7 +1427,7 @@ function CheckInScanner({ event, onCheckIn, onCheckInByShortCode, onClose, showT
           </div>
         </>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 pb-[calc(80px+env(safe-area-inset-bottom,0px))] md:pb-6 text-center">
           <div className="text-white/50 text-sm mb-4">Camera scanning isn't supported on this browser.<br/>Enter the guest's ticket code manually:</div>
           <input value={manual} onChange={e=>setManual(e.target.value)} placeholder="Paste ticket code"
             className="w-full max-w-xs rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none mb-3"
@@ -1684,7 +1684,9 @@ function EventGroupChat({ event, user, canPost, onClose }){
       className="fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
-        className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl flex flex-col" style={{background:"#0f1320",border:`1px solid ${BORDER}`,height:"85vh"}}>
+        className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl flex flex-col"
+        style={{background:"#0f1320",border:`1px solid ${BORDER}`,height:"85vh",
+                marginBottom:"calc(env(safe-area-inset-bottom, 0px))"}}>
         <div className="p-4 flex items-center gap-3" style={{borderBottom:`1px solid ${BORDER}`}}>
           <div className="flex-1 min-w-0">
             <div className="text-white font-bold text-sm truncate">💬 {event.title}</div>
@@ -1717,7 +1719,7 @@ function EventGroupChat({ event, user, canPost, onClose }){
         </div>
 
         {canPost ? (
-          <div className="p-3" style={{borderTop:`1px solid ${BORDER}`}}>
+          <div className="p-3 pb-[calc(72px+env(safe-area-inset-bottom,0px))] md:pb-3" style={{borderTop:`1px solid ${BORDER}`}}>
             {err&&<div className="text-red-400 text-xs mb-2 px-1">{err}</div>}
             <div className="flex gap-2">
             <input value={text} onChange={e=>setText(e.target.value)}
@@ -1730,7 +1732,7 @@ function EventGroupChat({ event, user, canPost, onClose }){
             </div>
           </div>
         ) : (
-          <div className="p-4 text-center text-white/35 text-xs" style={{borderTop:`1px solid ${BORDER}`}}>
+          <div className="p-4 pb-[calc(76px+env(safe-area-inset-bottom,0px))] md:pb-4 text-center text-white/35 text-xs" style={{borderTop:`1px solid ${BORDER}`}}>
             Register and get approved to join the conversation
           </div>
         )}
