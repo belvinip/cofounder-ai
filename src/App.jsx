@@ -97,6 +97,37 @@ const ud = (days,h=10,m=0) => { const d=new Date(_now); d.setDate(d.getDate()+da
 const pd = (days,h=18,m=0) => { const d=new Date(_now); d.setDate(d.getDate()-days); d.setHours(h,m,0,0); return d.toISOString(); };
 
 
+// ═══ EXTRA CARD LINKS (extensible contact fields) ═══
+const LINK_FIELDS = [
+  {id:"instagram", label:"Instagram", emoji:"📷", ph:"@username", pre:"https://instagram.com/"},
+  {id:"x",         label:"X",         emoji:"✖️", ph:"@username", pre:"https://x.com/"},
+  {id:"facebook",  label:"Facebook",  emoji:"👥", ph:"Profile URL or username", pre:"https://facebook.com/"},
+  {id:"youtube",   label:"YouTube",   emoji:"▶️", ph:"Channel URL", pre:""},
+  {id:"tiktok",    label:"TikTok",    emoji:"🎵", ph:"@username", pre:"https://tiktok.com/@"},
+  {id:"threads",   label:"Threads",   emoji:"🧵", ph:"@username", pre:"https://threads.net/@"},
+  {id:"snapchat",  label:"Snapchat",  emoji:"👻", ph:"@username", pre:"https://snapchat.com/add/"},
+  {id:"github",    label:"GitHub",    emoji:"💻", ph:"username", pre:"https://github.com/"},
+  {id:"telegram",  label:"Telegram",  emoji:"✈️", ph:"@username", pre:"https://t.me/"},
+  {id:"signal",    label:"Signal",    emoji:"🔒", ph:"Phone or link", pre:""},
+  {id:"discord",   label:"Discord",   emoji:"🎮", ph:"username or invite", pre:""},
+  {id:"skype",     label:"Skype",     emoji:"💬", ph:"Skype name", pre:""},
+  {id:"calendly",  label:"Calendly",  emoji:"📅", ph:"Booking link", pre:""},
+  {id:"paypal",    label:"PayPal",    emoji:"💳", ph:"paypal.me link", pre:""},
+  {id:"venmo",     label:"Venmo",     emoji:"💵", ph:"@username", pre:""},
+  {id:"yelp",      label:"Yelp",      emoji:"⭐", ph:"Business page URL", pre:""},
+  {id:"address",   label:"Address",   emoji:"📍", ph:"Your address", pre:""},
+  {id:"link",      label:"Other Link",emoji:"🔗", ph:"Any URL", pre:""},
+];
+const linkDef = (id)=>LINK_FIELDS.find(f=>f.id===id);
+const linkHref = (id,val)=>{
+  const d=linkDef(id); if(!d||!val) return null;
+  const v=String(val).trim();
+  if(d.id==="address") return `https://maps.google.com/?q=${encodeURIComponent(v)}`;
+  if(/^https?:\/\//i.test(v)) return v;
+  if(d.pre) return d.pre + v.replace(/^@/,"");
+  return `https://${v}`;
+};
+
 // ═══ LUMA-STYLE EVENT COVER THEMES ═══
 // Stored in cover_url as "theme:<id>" so no image hosting is needed.
 const COVER_THEMES = [
@@ -2719,6 +2750,7 @@ function MyProjects({ user, isAdmin, showToast }) {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // project being edited, or "new"
   const [saving, setSaving] = useState(false);
+  const [autoSaved, setAutoSaved] = useState(false);
   const blank = {project_name:"",project_pitch:"",project_industry:"",project_stage:"",funding_status:"",team_size:"",project_website:"",roles_needed:[]};
   const [f, setF] = useState(blank);
   const LIMIT = isAdmin ? 100 : 3;
@@ -2757,6 +2789,26 @@ function MyProjects({ user, isAdmin, showToast }) {
     setSaving(false);
   }
 
+  // Auto-save edits to an existing project 1.2s after typing stops
+  const projFirstRef = useRef(true);
+  useEffect(()=>{
+    if(!editing || editing==="new"){ projFirstRef.current=true; return; }
+    if(projFirstRef.current){ projFirstRef.current=false; return; }
+    if(!f.project_name.trim()) return;
+    const t=setTimeout(async()=>{
+      try {
+        await supabase.from("projects").update({
+          project_name:f.project_name, project_pitch:f.project_pitch, project_industry:f.project_industry,
+          project_stage:f.project_stage, funding_status:f.funding_status,
+          team_size:parseInt(f.team_size)||null, project_website:f.project_website, roles_needed:f.roles_needed,
+        }).eq("id",editing);
+        setAutoSaved(true); setTimeout(()=>setAutoSaved(false),1800);
+      } catch(e){}
+    },1200);
+    return ()=>clearTimeout(t);
+  // eslint-disable-next-line
+  },[f,editing]);
+
   async function del(id) {
     if(!confirm("Delete this project?")) return;
     const {error}=await supabase.from("projects").delete().eq("id",id);
@@ -2767,6 +2819,9 @@ function MyProjects({ user, isAdmin, showToast }) {
   if(editing){
     return (
       <Card className="p-5 space-y-4">
+        {editing!=="new"&&(
+          <div className="text-white/35 text-xs text-center">{autoSaved?"✓ Saved automatically":"Changes save automatically as you edit"}</div>
+        )}
         <div className="flex items-center justify-between">
           <span className="text-white font-bold">{editing==="new"?"New Project":"Edit Project"}</span>
           <button onClick={()=>setEditing(null)} className="text-white/40 text-sm">✕ Cancel</button>
@@ -3311,17 +3366,18 @@ function CardContacts({ user }) {
 }
 
 function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
-  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:"",brand_color:"#7c6fe0",cover_url:"",businesses:[],booking_enabled:false,booking_duration:30,booking_hours:null});
+  const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:"",brand_color:"#7c6fe0",cover_url:"",qr_logo_url:"",links:{},businesses:[],booking_enabled:false,booking_duration:30,booking_hours:null});
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState("identity");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
+  const [qrLogoUploading, setQrLogoUploading] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
   const avatarInputRef = useRef();
 
   useEffect(()=>{
-    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||"",headline:profile.headline||"",availability:profile.availability||"",project_stage:profile.project_stage||"",project_website:profile.project_website||"",team_size:profile.team_size||"",funding_status:profile.funding_status||"",brand_color:profile.brand_color||"#7c6fe0",cover_url:profile.cover_url||"",businesses:Array.isArray(profile.businesses)?profile.businesses:(profile.businesses?JSON.parse(profile.businesses):[]),booking_enabled:!!profile.booking_enabled,booking_duration:profile.booking_duration||30,booking_hours:profile.booking_hours||null});
+    if(profile) setForm({name:profile.name||"",bio:profile.bio||"",experience:profile.experience||"",location:profile.location||"",skills:profile.skills||[],mobile:profile.mobile||"",role:profile.role||"",project_name:profile.project_name||"",project_pitch:profile.project_pitch||"",project_industry:profile.project_industry||"",linkedin_url:profile.linkedin_url||"",website_url:profile.website_url||"",whatsapp:profile.whatsapp||"",roles_needed:profile.roles_needed||[],business_name:profile.business_name||"",wechat:profile.wechat||"",headline:profile.headline||"",availability:profile.availability||"",project_stage:profile.project_stage||"",project_website:profile.project_website||"",team_size:profile.team_size||"",funding_status:profile.funding_status||"",brand_color:profile.brand_color||"#7c6fe0",cover_url:profile.cover_url||"",qr_logo_url:profile.qr_logo_url||"",links:(typeof profile.links==="object"&&profile.links)||{},businesses:Array.isArray(profile.businesses)?profile.businesses:(profile.businesses?JSON.parse(profile.businesses):[]),booking_enabled:!!profile.booking_enabled,booking_duration:profile.booking_duration||30,booking_hours:profile.booking_hours||null});
   },[profile]);
 
   const pitchScore=(()=>{let s=0;if(form.project_name?.length>3)s+=25;if(form.project_pitch?.length>20)s+=30;if(form.project_pitch?.length>80)s+=20;if(form.project_industry)s+=25;return Math.min(s,100);})();
@@ -3358,7 +3414,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         business_name: form.business_name||"", wechat: form.wechat||"", headline: form.headline||"", availability: form.availability||"",
         project_stage: form.project_stage||"", project_website: form.project_website||"", team_size: toInt(form.team_size),
         funding_status: form.funding_status||"", brand_color: form.brand_color||"#7c6fe0",
-        cover_url: form.cover_url||"", businesses: Array.isArray(form.businesses)?form.businesses:[],
+        cover_url: form.cover_url||"", qr_logo_url: form.qr_logo_url||"", links: form.links||{}, businesses: Array.isArray(form.businesses)?form.businesses:[],
         booking_enabled: !!form.booking_enabled, booking_duration: parseInt(form.booking_duration)||30, booking_hours: form.booking_hours||null,
         updated_at: new Date().toISOString(),
       };
@@ -3420,6 +3476,22 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
         </div>
       </Card>
 
+      {/* QR preview — scan-ready from the Profile tab */}
+      {user&&(
+        <div className="flex flex-col items-center">
+          <div className="relative rounded-2xl overflow-hidden" style={{padding:"10px",background:"#fff"}}>
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(`${window.location.origin}${window.location.pathname}?card=${user.id}`)}`}
+              alt="My card QR" width={170} height={170}/>
+            {(form.qr_logo_url||profile?.avatar_url)&&(
+              <img src={form.qr_logo_url||profile?.avatar_url} alt="" className="absolute top-1/2 left-1/2 rounded-lg"
+                style={{width:"40px",height:"40px",transform:"translate(-50%,-50%)",border:"3px solid #fff",objectFit:"cover"}}/>
+            )}
+          </div>
+          <div className="text-white/30 text-[11px] mt-2 uppercase tracking-wider">Scan to open my card</div>
+        </div>
+      )}
+
       {/* My Digital Business Card */}
       <button onClick={()=>{
         window.location.href=`${window.location.origin}${window.location.pathname}?card=${user.id}`;
@@ -3452,6 +3524,59 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
           </div>
         </div>
         <p className="text-white/30 text-xs mt-2">Changes save automatically. Your QR code also shows your profile photo in the centre.</p>
+      </Card>
+
+      {/* QR logo */}
+      <Card className="p-4">
+        <div className="text-white font-semibold text-sm mb-1">QR code logo</div>
+        <div className="text-white/40 text-xs mb-3">Shows in the centre of your QR. Defaults to your profile photo.</div>
+        <div className="flex items-center gap-3">
+          {(form.qr_logo_url||profile?.avatar_url)&&(
+            <img src={form.qr_logo_url||profile?.avatar_url} alt="" className="w-12 h-12 rounded-xl object-cover" style={{border:`1px solid ${BORDER}`}}/>
+          )}
+          <label className="px-4 py-2.5 rounded-2xl text-sm font-semibold cursor-pointer text-white" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>
+            {qrLogoUploading?"Uploading…":(form.qr_logo_url?"Change logo":"Upload logo")}
+            <input type="file" accept="image/*" className="hidden" disabled={qrLogoUploading} onChange={async e=>{
+              const file=e.target.files?.[0]; if(!file) return;
+              setQrLogoUploading(true);
+              try { const url=await uploadImage(file,"avatars",`qrlogo-${user.id}`); setForm(f=>({...f,qr_logo_url:url})); showToast("QR logo updated ✓"); }
+              catch(err){ showToast(err.message||"Upload failed","error"); }
+              setQrLogoUploading(false);
+            }}/>
+          </label>
+          {form.qr_logo_url&&<button onClick={()=>setForm(f=>({...f,qr_logo_url:""}))} className="text-white/40 text-xs">Reset</button>}
+        </div>
+      </Card>
+
+      {/* Add more links to your card */}
+      <Card className="p-4">
+        <div className="text-white font-semibold text-sm mb-1">More card links</div>
+        <div className="text-white/40 text-xs mb-3">Tap a field to add it to your digital card.</div>
+        {/* Active fields */}
+        <div className="space-y-2 mb-3">
+          {LINK_FIELDS.filter(f=>form.links&&form.links[f.id]!==undefined).map(f=>(
+            <div key={f.id} className="flex items-center gap-2">
+              <span className="w-8 text-center">{f.emoji}</span>
+              <input value={form.links[f.id]||""} placeholder={f.ph}
+                onChange={e=>setForm(x=>({...x,links:{...x.links,[f.id]:e.target.value}}))}
+                className="flex-1 rounded-xl px-3 py-2 text-white placeholder-white/25 focus:outline-none"
+                style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              <button onClick={()=>setForm(x=>{ const l={...x.links}; delete l[f.id]; return {...x,links:l}; })}
+                className="text-red-400/60 text-xs px-1">✕</button>
+            </div>
+          ))}
+        </div>
+        {/* Picker */}
+        <div className="grid grid-cols-3 gap-2">
+          {LINK_FIELDS.filter(f=>!form.links||form.links[f.id]===undefined).map(f=>(
+            <button key={f.id} onClick={()=>setForm(x=>({...x,links:{...(x.links||{}),[f.id]:""}}))}
+              className="flex flex-col items-center gap-1 py-3 rounded-2xl transition-all"
+              style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+              <span className="text-lg">{f.emoji}</span>
+              <span className="text-white/60 text-[10px] text-center leading-tight px-1">{f.label}</span>
+            </button>
+          ))}
+        </div>
       </Card>
 
       {/* Cover image for the card */}
@@ -4267,6 +4392,18 @@ function BusinessCardPage({ userId }) {
       <div className="w-full max-w-md relative">
         {/* Card */}
         <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className="rounded-3xl overflow-hidden" style={{background:"#0f1320",border:`1px solid ${BORDER}`,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+          {/* QR first — scan-ready before any details */}
+          <div className="flex flex-col items-center pt-6 pb-4 px-6">
+            <div className="relative rounded-2xl overflow-hidden" style={{padding:"10px",background:"#fff"}}>
+              <img src={qrUrl} alt="QR code" width={190} height={190}/>
+              {(p.qr_logo_url||p.avatar_url)&&(
+                <img src={p.qr_logo_url||p.avatar_url} alt="" className="absolute top-1/2 left-1/2 rounded-lg"
+                  style={{width:"44px",height:"44px",transform:"translate(-50%,-50%)",border:"3px solid #fff",objectFit:"cover"}}/>
+              )}
+            </div>
+            <div className="text-white/30 text-[11px] mt-2 uppercase tracking-wider">Scan to open this card</div>
+          </div>
+
           {/* Cover image (or brand colour) — Blinq style */}
           <div className="relative" style={{height:"140px",background: p.cover_url?`#0f1320`:brandGrad}}>
             {p.cover_url&&<img src={p.cover_url} alt="" className="w-full h-full object-cover"/>}
@@ -4343,6 +4480,24 @@ function BusinessCardPage({ userId }) {
               🤝 Connect with {(p.name||"them").split(" ")[0]} on ABAA
             </a>
 
+            {/* Extra links the user added */}
+            {(()=>{
+              const L=(p.links&&typeof p.links==="object")?p.links:{};
+              const entries=LINK_FIELDS.filter(f=>L[f.id]&&String(L[f.id]).trim());
+              if(entries.length===0) return null;
+              return (
+                <div className="space-y-2">
+                  {entries.map(f=>(
+                    <a key={f.id} href={linkHref(f.id,L[f.id])} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium text-white/80"
+                      style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
+                      <span>{f.emoji}</span><span className="truncate">{f.label}</span>
+                    </a>
+                  ))}
+                </div>
+              );
+            })()}
+
             {/* Two-way: share details back */}
             <button onClick={()=>setShowExchange(true)} className="w-full py-3 rounded-2xl text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white"}}>
               🔄 Share your details back
@@ -4350,11 +4505,6 @@ function BusinessCardPage({ userId }) {
 
             {/* QR + share */}
             <div className="pt-4 flex flex-col items-center gap-3" style={{borderTop:`1px solid ${BORDER}`}}>
-              <div className="text-white/40 text-xs uppercase tracking-wider">Scan to open this card</div>
-              <div className="relative rounded-2xl overflow-hidden" style={{padding:"10px",background:"#fff"}}>
-                <img src={qrUrl} alt="QR code" width={180} height={180}/>
-                {p.avatar_url&&<img src={p.avatar_url} alt="" className="absolute top-1/2 left-1/2 rounded-lg" style={{width:"40px",height:"40px",transform:"translate(-50%,-50%)",border:"3px solid #fff",objectFit:"cover"}}/>}
-              </div>
               <button onClick={share} className="w-full py-3 rounded-2xl text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"white"}}>
                 {copied?"✓ Link copied!":"🔗 Share this card"}
               </button>
