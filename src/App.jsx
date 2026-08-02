@@ -837,12 +837,14 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
           {/* Contact — BLURRED until matched */}
           <div className="p-4 rounded-2xl space-y-2 relative overflow-hidden" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
             <div className="text-white/35 text-xs uppercase tracking-wider font-semibold mb-2">Contact Details</div>
-            {isAccepted ? (
+            {(isAccepted || p.id===user?.id || isAdmin) ? (
               <>
                 <div className="text-sm text-white/70">📧 {p.email}</div>
                 {p.mobile&&<div className="text-sm text-white/70">📱 {p.mobile}</div>}
                 {p.whatsapp&&<div className="text-sm text-white/70">💬 {p.whatsapp}</div>}
-                <div className="text-emerald-400 text-xs mt-1">✓ Connected — contact revealed</div>
+                <div className="text-emerald-400 text-xs mt-1">
+                  {p.id===user?.id ? "This is your own profile" : (isAccepted ? "✓ Connected — contact revealed" : "★ Visible to you as an admin")}
+                </div>
               </>
             ) : (
               <>
@@ -4189,8 +4191,8 @@ function BookingModal({ host, onClose }) {
       if(error) throw error;
       // Notify host of a booking REQUEST awaiting their acceptance
       const when=`${fmtDateNice(selSlot)} at ${fmtTime12(`${selSlot.getHours()}:${String(selSlot.getMinutes()).padStart(2,"0")}`)}`;
-      if(host.email) sendEmail("booking_request", host.email, { guestName:gName, guestEmail:current.email, when, note:guest.note, duration });
-      sendEmail("booking_submitted", current.email, { hostName:host.name, when, duration });
+      if(host.email) sendEmail("booking_request", host.email, { guestName:gName, guestEmail:current.email, when, note:guest.note, duration, link:meetingLink });
+      sendEmail("booking_submitted", current.email, { hostName:host.name, when, duration, link:meetingLink });
       setStep(4);
     } catch(e){ setErr(e.message||"Booking failed — please try again"); }
     setSaving(false);
