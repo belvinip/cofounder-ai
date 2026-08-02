@@ -1376,7 +1376,7 @@ function ticketQrUrl(eventId, userId){
 function TicketModal({ event, userId, onClose }){
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/85 p-4 pb-[calc(80px+env(safe-area-inset-bottom,0px))] md:pb-4" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/85 p-4" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="w-full max-w-xs rounded-3xl p-6 text-center" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
         <div className="text-white font-bold text-lg mb-1">Your Ticket</div>
         <div className="text-white/50 text-sm mb-4">{event.title}</div>
@@ -1442,7 +1442,7 @@ function CheckInScanner({ event, onCheckIn, onCheckInByShortCode, onClose, showT
               <div className="w-56 h-56 rounded-3xl" style={{border:"3px solid rgba(167,139,250,0.8)"}}/>
             </div>
           </div>
-          <div className="p-5 pb-[calc(80px+env(safe-area-inset-bottom,0px))] md:pb-5 space-y-3">
+          <div className="p-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] space-y-3">
             <div className="text-center text-white/70 text-sm">{status}</div>
             <div className="flex gap-2">
               <input value={manual} onChange={e=>setManual(e.target.value)} placeholder="Or type ticket code (e.g. A1B2-C3D4)"
@@ -1458,7 +1458,7 @@ function CheckInScanner({ event, onCheckIn, onCheckInByShortCode, onClose, showT
           </div>
         </>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 pb-[calc(80px+env(safe-area-inset-bottom,0px))] md:pb-6 text-center">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 pb-[calc(24px+env(safe-area-inset-bottom,0px))] text-center">
           <div className="text-white/50 text-sm mb-4">Camera scanning isn't supported on this browser.<br/>Enter the guest's ticket code manually:</div>
           <input value={manual} onChange={e=>setManual(e.target.value)} placeholder="Paste ticket code"
             className="w-full max-w-xs rounded-2xl px-4 py-3 text-white placeholder-white/30 focus:outline-none mb-3"
@@ -1750,7 +1750,7 @@ function EventGroupChat({ event, user, canPost, onClose }){
         </div>
 
         {canPost ? (
-          <div className="p-3 pb-[calc(72px+env(safe-area-inset-bottom,0px))] md:pb-3" style={{borderTop:`1px solid ${BORDER}`}}>
+          <div className="p-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))]" style={{borderTop:`1px solid ${BORDER}`}}>
             {err&&<div className="text-red-400 text-xs mb-2 px-1">{err}</div>}
             <div className="flex gap-2">
             <input value={text} onChange={e=>setText(e.target.value)}
@@ -1763,7 +1763,7 @@ function EventGroupChat({ event, user, canPost, onClose }){
             </div>
           </div>
         ) : (
-          <div className="p-4 pb-[calc(76px+env(safe-area-inset-bottom,0px))] md:pb-4 text-center text-white/35 text-xs" style={{borderTop:`1px solid ${BORDER}`}}>
+          <div className="p-4 pb-[calc(16px+env(safe-area-inset-bottom,0px))] text-center text-white/35 text-xs" style={{borderTop:`1px solid ${BORDER}`}}>
             Register and get approved to join the conversation
           </div>
         )}
@@ -4756,6 +4756,29 @@ export default function App() {
 
   const showToast=useCallback((msg,type="success")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3200); },[]);
 
+  // ── Global modal detection: hide the bottom nav while any overlay is open, so
+  //    it can never cover a modal's buttons. Works for every modal automatically.
+  const [modalOpen,setModalOpen]=useState(false);
+  useEffect(()=>{
+    const check=()=>{
+      // An overlay is any fixed, full-screen element (modals all use `fixed inset-0`)
+      const overlays=document.querySelectorAll('div.fixed.inset-0');
+      let found=false;
+      overlays.forEach(el=>{
+        const cs=window.getComputedStyle(el);
+        if(cs.display!=="none" && cs.visibility!=="hidden" && parseFloat(cs.opacity||"1")>0.01){
+          // ignore the nav itself and tiny click-catchers
+          if(el.offsetHeight>200) found=true;
+        }
+      });
+      setModalOpen(found);
+    };
+    check();
+    const obs=new MutationObserver(check);
+    obs.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["class","style"]});
+    return ()=>obs.disconnect();
+  },[]);
+
   // Load notification counts (pending requests + unread messages) and poll.
   // Placed BEFORE any early return so hook order stays stable.
   useEffect(()=>{
@@ -4985,7 +5008,12 @@ export default function App() {
       </main>
 
       {/* Mobile Bottom Nav — matching reference image */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30" style={{background:"rgba(10,14,26,0.95)",backdropFilter:"blur(20px)",borderTop:`1px solid ${BORDER}`}}>
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30"
+        style={{background:"rgba(10,14,26,0.95)",backdropFilter:"blur(20px)",borderTop:`1px solid ${BORDER}`,
+                transform:modalOpen?"translateY(110%)":"translateY(0)",
+                opacity:modalOpen?0:1,
+                pointerEvents:modalOpen?"none":"auto",
+                transition:"transform .25s cubic-bezier(.2,.8,.2,1), opacity .2s ease"}}>
         <div className="flex items-center justify-around px-2 py-3">
           {NAV.map(n=>{
             const active=tab===n.id;
