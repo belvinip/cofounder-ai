@@ -994,8 +994,12 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
   }
 
   async function respondToRequest(reqId, status) {
-    const {error}=await supabase.from("match_requests").update({status}).eq("id",reqId);
+    const {data:updated,error}=await supabase.from("match_requests").update({status}).eq("id",reqId).select();
     if(error){showToast(error.message,"error");return;}
+    if(!updated || updated.length===0){
+      showToast("Couldn't save — permission denied on match_requests. Run the RLS fix SQL.","error");
+      return;
+    }
     showToast(status==="accepted"?"Match accepted! You can now chat ✓":"Request declined");
     if(status==="accepted"){
       const req=incomingReqs.find(r=>r.id===reqId);
@@ -1024,6 +1028,13 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
     }
     loadRequests();
   }
+
+  useEffect(()=>{
+    if(!user) return;
+    const iv=setInterval(()=>{ loadRequests(); }, 15000);
+    return ()=>clearInterval(iv);
+  // eslint-disable-next-line
+  },[user]);
 
   useEffect(()=>{
     // Load ALL approved profiles (needed so admins appear in Core Members)
