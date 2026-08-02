@@ -4772,15 +4772,20 @@ export default function App() {
   const [modalOpen,setModalOpen]=useState(false);
   useEffect(()=>{
     const check=()=>{
-      // An overlay is any fixed, full-screen element (modals all use `fixed inset-0`)
+      // A real modal is a fixed, full-screen, INTERACTIVE overlay stacked above the nav.
+      // Background decoration (BgGlow) is fixed+inset-0 too, so we must exclude
+      // pointer-events:none layers and anything below the nav's z-index.
       const overlays=document.querySelectorAll('div.fixed.inset-0');
       let found=false;
       overlays.forEach(el=>{
         const cs=window.getComputedStyle(el);
-        if(cs.display!=="none" && cs.visibility!=="hidden" && parseFloat(cs.opacity||"1")>0.01){
-          // ignore the nav itself and tiny click-catchers
-          if(el.offsetHeight>200) found=true;
-        }
+        if(cs.display==="none"||cs.visibility==="hidden") return;
+        if(parseFloat(cs.opacity||"1")<=0.01) return;
+        if(cs.pointerEvents==="none") return;              // decorative layers
+        const z=parseInt(cs.zIndex,10);
+        if(!Number.isFinite(z)||z<50) return;              // must sit above the nav
+        if(el.offsetHeight<200) return;                    // ignore tiny click-catchers
+        found=true;
       });
       setModalOpen(found);
     };
