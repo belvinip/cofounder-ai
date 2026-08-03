@@ -1356,6 +1356,60 @@ function ProjectBoard({ projects, onEdit, onStageChange }){
   );
 }
 
+// ═══ #5 SAVED SEARCHES ═══
+function SavedSearches({ user, currentFilters, onApply, showToast }){
+  const [items,setItems]=useState([]);
+  const [open,setOpen]=useState(false);
+  async function load(){
+    if(!user) return;
+    try{ const {data}=await supabase.from("saved_searches").select("*").eq("user_id",user.id).order("created_at",{ascending:false});
+      setItems(data||[]); }catch(e){}
+  }
+  useEffect(()=>{ load(); },[user]);
+  async function save(){
+    const name=prompt("Name this search (e.g. 'CTOs in Melbourne')");
+    if(!name) return;
+    try{
+      await supabase.from("saved_searches").insert({user_id:user.id,name,filters:currentFilters});
+      showToast("Search saved ✓"); load();
+    }catch(e){ showToast(e.message||"Could not save","error"); }
+  }
+  async function remove(id){
+    try{ await supabase.from("saved_searches").delete().eq("id",id); load(); }catch(e){}
+  }
+  const hasFilters = currentFilters && Object.values(currentFilters).some(v=>v&&v!=="");
+  if(!user) return null;
+  return (
+    <div className="rounded-2xl p-3" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+      <button onClick={()=>setOpen(o=>!o)} className="w-full flex items-center justify-between">
+        <span className="text-white/60 text-xs font-semibold">🔖 Saved searches{items.length>0?` (${items.length})`:""}</span>
+        <span className="text-white/30 text-xs">{open?"▾":"▸"}</span>
+      </button>
+      {open&&(
+        <div className="mt-2 space-y-1.5">
+          {items.length===0&&<div className="text-white/25 text-[11px] text-center py-2">None saved yet</div>}
+          {items.map(s=>(
+            <div key={s.id} className="flex items-center gap-2">
+              <button onClick={()=>{onApply(s.filters||{});showToast(`Applied "${s.name}"`);}}
+                className="flex-1 text-left px-3 py-2 rounded-xl text-xs text-white/75 hover:bg-white/5"
+                style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                {s.name}
+              </button>
+              <button onClick={()=>remove(s.id)} className="text-red-400/50 text-xs px-1">✕</button>
+            </div>
+          ))}
+          {hasFilters&&(
+            <button onClick={save} className="w-full py-2 rounded-xl text-[11px] font-semibold text-purple-300"
+              style={{background:"rgba(124,111,224,0.12)",border:"1px solid rgba(124,111,224,0.3)"}}>
+              + Save current filters
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══ CONNECTION LABELS (how you met) ═══
 const MEET_LABELS = [
   {id:"event",  emoji:"🎟️", name:"Met at an event"},
@@ -1407,7 +1461,7 @@ function ConnectionLabelPicker({ matchId, current, onSaved, showToast }){
   );
 }
 
-function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs, connectId }) {
+function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs, connectId, onGoTab }) {
   const [search, setSearch] = useState("");
   const [filterIndustry, setFilterIndustry] = useState("");
   const [filterRole, setFilterRole] = useState("");
@@ -1418,6 +1472,7 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [connSearch, setConnSearch] = useState("");
   const [blockedIds, setBlockedIds] = useState([]);
+  const [checklistHidden, setChecklistHidden] = useState(()=>{ try{ return localStorage.getItem("abaa_checklist_hidden")==="1"; }catch(e){ return false; } });
   const [filterAvail, setFilterAvail] = useState("");
   const [filterExp, setFilterExp] = useState("");
   const [filterVerified, setFilterVerified] = useState(false);
@@ -1662,6 +1717,14 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
       </div>
 
       {/* Messages — accepted connections you can chat with */}
+      {/* #1 Onboarding checklist */}
+      {user&&!checklistHidden&&(
+        <OnboardingChecklist profile={profile} connectionCount={acceptedConnections.length}
+          eventCount={0}
+          onGo={(t)=>{ if(t==="profile"||t==="events"||t==="projects") onGoTab&&onGoTab(t); }}
+          onDismiss={()=>{ setChecklistHidden(true); try{localStorage.setItem("abaa_checklist_hidden","1");}catch(e){} }}/>
+      )}
+
       {acceptedConnections.length>0&&(
         <button onClick={()=>setShowAllMessages(true)}
           className="abaa-lift w-full flex items-center gap-3 p-4 rounded-3xl text-left transition-all"
@@ -1739,6 +1802,10 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
                   style={{color:filterVerified?"#c4b5fd":"rgba(255,255,255,0.5)"}}>
                   <span>{filterVerified?"☑":"☐"}</span> Verified members only
                 </button>
+                <SavedSearches user={user}
+                  currentFilters={{industry:filterIndustry,role:filterRole,avail:filterAvail,exp:filterExp,verified:filterVerified?"1":""}}
+                  onApply={(f)=>{ setFilterIndustry(f.industry||""); setFilterRole(f.role||""); setFilterAvail(f.avail||""); setFilterExp(f.exp||""); setFilterVerified(f.verified==="1"); }}
+                  showToast={showToast}/>
                 {(filterIndustry||filterRole||filterAvail||filterExp||filterVerified)&&(
                   <button onClick={()=>{setFilterIndustry("");setFilterRole("");setFilterAvail("");setFilterExp("");setFilterVerified(false);}} className="text-white/40 text-xs hover:text-white/70 transition-colors">✕ Clear all filters</button>
                 )}
@@ -5681,7 +5748,7 @@ export default function App() {
                 <GoogleIcon/> Sign In to Continue
               </PrimaryBtn>
             </motion.div>
-          ):tab==="matching"?<MatchTab key="m" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs} connectId={connectId}/>
+          ):tab==="matching"?<MatchTab key="m" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs} connectId={connectId} onGoTab={setTab}/>
           :tab==="events"?<EventsTab key="e" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
           :tab==="projects"?<ProjectsTab key="pr" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
           :tab==="profile"?<ProfileTab key="p" user={user} profile={effectiveProfile} setProfile={setEffectiveProfile} showToast={showToast} isApproved={isApproved}/>
