@@ -903,6 +903,19 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
           )}
           {showBooking&&<BookingModal host={p} onClose={()=>setShowBooking(false)}/>}
 
+          {/* #8 Block */}
+          {user&&!isDemo&&p.id!==user.id&&(
+            <button onClick={async()=>{
+              if(!confirm(`Block ${p.name}? They will no longer appear for you, and you won't appear for them.`)) return;
+              try{
+                await supabase.from("blocks").insert({blocker_id:user.id,blocked_id:p.id});
+                showToast(`${p.name} blocked`); onClose();
+              }catch(e){ showToast(e.message||"Could not block","error"); }
+            }} className="w-full text-center text-white/25 hover:text-red-400/70 text-xs transition-colors py-1">
+              🚫 Block this person
+            </button>
+          )}
+
           {/* Report (real profiles, not self, not demo) */}
           {user&&!isDemo&&p.id!==user.id&&(
             <button onClick={reportUser} className="w-full text-center text-white/25 hover:text-red-400/70 text-xs transition-colors py-1">
@@ -1404,6 +1417,10 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
   const [chat, setChat] = useState(null);
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [connSearch, setConnSearch] = useState("");
+  const [blockedIds, setBlockedIds] = useState([]);
+  const [filterAvail, setFilterAvail] = useState("");
+  const [filterExp, setFilterExp] = useState("");
+  const [filterVerified, setFilterVerified] = useState(false);
   const [connLabelFilter, setConnLabelFilter] = useState(null);
   const [bookingTarget, setBookingTarget] = useState(null);
   const [selectedProfile, setSelectedProfile] = useState(null);
@@ -1455,6 +1472,12 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
       }
     }
     loadRequests();
+    // #8 load who I've blocked (and who blocked me)
+    if(user){
+      supabase.from("blocks").select("blocker_id,blocked_id").or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
+        .then(({data})=>setBlockedIds((data||[]).map(b=>b.blocker_id===user.id?b.blocked_id:b.blocker_id)))
+        .catch(()=>{});
+    }
   }
 
   useEffect(()=>{
@@ -1525,6 +1548,22 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
     if(myState&&myState===theirState) s+=10;
     return s;
   }
+  // #17 Explain WHY someone is suggested, so the matching feels transparent
+  function matchReasons(p){
+    const r=[];
+    const myRole=profile?.role||"";
+    if(isTechnical(myRole)&&isBusiness(p.role)) r.push("Complementary role");
+    if(isBusiness(myRole)&&isTechnical(p.role)) r.push("Complementary role");
+    if(profile?.project_industry&&p.project_industry===profile.project_industry) r.push("Same industry");
+    const myState=(profile?.location||"").split(",")[1]?.trim();
+    const theirState=(p.location||"").split(",")[1]?.trim();
+    if(myState&&myState===theirState) r.push("Same state");
+    const shared=(p.skills||[]).filter(s=>(profile?.skills||[]).includes(s));
+    if(shared.length) r.push(`${shared.length} shared skill${shared.length>1?"s":""}`);
+    if((p.roles_needed||[]).some(x=>myRole&&String(x).toLowerCase().includes(myRole.split(" ")[0]?.toLowerCase()||"___"))) r.push("Looking for your role");
+    return r.slice(0,2);
+  }
+
   const sortedReal = [...realBrowse].sort((a,b)=>(relevance(b)+completeness(b))-(relevance(a)+completeness(a)));
   const realNames = new Set(realBrowse.map(p=>(p.name||"").toLowerCase()));
   const demoBrowse = DEMO_PROFILES.filter(d=>!realNames.has((d.name||"").toLowerCase()));
@@ -1540,15 +1579,39 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
 
   const filtered = pool.filter(p=>{
     if(p.id===myId) return false; // don't show yourself in the browse list
+    if(blockedIds.includes(p.id)) return false; // #8 hide blocked people
     const q=search.toLowerCase();
     const matchesSearch = !search || (p.name||"").toLowerCase().includes(q)||(p.role||"").toLowerCase().includes(q)||(p.skills||[]).some(s=>s.toLowerCase().includes(q))||(p.location||"").toLowerCase().includes(q)||(p.bio||"").toLowerCase().includes(q);
     const matchesIndustry = !filterIndustry || p.project_industry===filterIndustry;
     const matchesRole = !filterRole || (p.role||"").toLowerCase().includes(filterRole.toLowerCase());
-    return matchesSearch && matchesIndustry && matchesRole;
+    // #6 advanced filters
+    const matchesAvail = !filterAvail || p.availability===filterAvail;
+    const matchesExp = !filterExp || (
+      filterExp==="0-2" ? (p.experience||0)<=2 :
+      filterExp==="3-5" ? (p.experience||0)>=3&&(p.experience||0)<=5 :
+      filterExp==="6-10"? (p.experience||0)>=6&&(p.experience||0)<=10 :
+      (p.experience||0)>10
+    );
+    const matchesVerified = !filterVerified || !!p.verified;
+    return matchesSearch && matchesIndustry && matchesRole && matchesAvail && matchesExp && matchesVerified;
   });
+
+  function profileReadyToReachOut(){
+    const need=[];
+    if(!profile?.avatar_url) need.push("a photo");
+    if(!profile?.role) need.push("your role");
+    if(!profile?.bio) need.push("a short bio");
+    return need;
+  }
 
   async function handleRequest(p) {
     if(requireAuth && !requireAuth()) return;
+    // #9 Profile completeness gate — keeps outreach quality high
+    const missing=profileReadyToReachOut();
+    if(missing.length>0){
+      showToast(`Add ${missing.join(", ")} to your profile before reaching out`,"error");
+      return;
+    }
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     if(p.id?.startsWith("d")){showToast("Demo profile — real users appear here once they sign up 😊");return;}
     try {
@@ -1654,8 +1717,30 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
                     ))}
                   </div>
                 </div>
-                {(filterIndustry||filterRole)&&(
-                  <button onClick={()=>{setFilterIndustry("");setFilterRole("");}} className="text-white/40 text-xs hover:text-white/70 transition-colors">✕ Clear all filters</button>
+                <div>
+                  <div className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Availability</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button onClick={()=>setFilterAvail("")} className="px-3 py-1 rounded-full text-xs font-medium" style={!filterAvail?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>All</button>
+                    {["Full-time","Part-time","Weekends","Advisory","Just exploring"].map(a=>(
+                      <button key={a} onClick={()=>setFilterAvail(filterAvail===a?"":a)} className="px-3 py-1 rounded-full text-xs font-medium" style={filterAvail===a?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>{a}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Experience</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button onClick={()=>setFilterExp("")} className="px-3 py-1 rounded-full text-xs font-medium" style={!filterExp?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>Any</button>
+                    {[["0-2","0–2 yrs"],["3-5","3–5 yrs"],["6-10","6–10 yrs"],["10+","10+ yrs"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>setFilterExp(filterExp===v?"":v)} className="px-3 py-1 rounded-full text-xs font-medium" style={filterExp===v?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={()=>setFilterVerified(v=>!v)} className="flex items-center gap-2 text-xs font-medium"
+                  style={{color:filterVerified?"#c4b5fd":"rgba(255,255,255,0.5)"}}>
+                  <span>{filterVerified?"☑":"☐"}</span> Verified members only
+                </button>
+                {(filterIndustry||filterRole||filterAvail||filterExp||filterVerified)&&(
+                  <button onClick={()=>{setFilterIndustry("");setFilterRole("");setFilterAvail("");setFilterExp("");setFilterVerified(false);}} className="text-white/40 text-xs hover:text-white/70 transition-colors">✕ Clear all filters</button>
                 )}
               </Card>
             </motion.div>
@@ -1717,12 +1802,28 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
                 <div className="flex items-start gap-3 mb-3">
                   <Av name={p.name} url={p.avatar_url} color={color} size="md" ring/>
                   <div className="flex-1 min-w-0">
-                    <div className="text-white font-bold text-base">{p.name}</div>
+                    <div className="text-white font-bold text-base flex items-center gap-1.5">{p.name}<VerifiedBadge verified={p.verified} size="lg"/></div>
                     <div className="text-white/50 text-sm">{p.role}</div>
                     {p.location&&<div className="text-white/35 text-xs mt-0.5">📍 {p.location}</div>}
                   </div>
                   {p.project_industry&&<SkillChip label={p.project_industry}/>}
                 </div>
+
+                {/* #17 Why this person is suggested */}
+                {(()=>{
+                  const reasons=matchReasons(p);
+                  if(reasons.length===0||String(p.id||"").startsWith("d")) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {reasons.map(r=>(
+                        <span key={r} className="text-[10px] px-2 py-0.5 rounded-full"
+                          style={{background:"rgba(167,139,250,0.14)",color:"#c4b5fd",border:"1px solid rgba(167,139,250,0.28)"}}>
+                          ✨ {r}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {p.bio&&<p className="text-white/45 text-sm leading-relaxed mb-3 line-clamp-2">{p.bio}</p>}
                 {p.skills?.length>0&&<div className="flex flex-wrap gap-1.5 mb-4">{p.skills.slice(0,4).map(s=><SkillChip key={s} label={s}/>)}</div>}
@@ -4968,7 +5069,7 @@ function BusinessCardPage({ userId }) {
           </div>
           {/* Identity */}
           <div className="px-6 pt-3 pb-1">
-            <div className="text-white font-bold text-2xl">{p.name}</div>
+            <div className="text-white font-bold text-2xl flex items-center gap-2">{p.name}<VerifiedBadge verified={p.verified} size="lg"/></div>
             {p.role&&<div className="text-white/60 text-sm mt-1">{p.role}</div>}
             {p.location&&<div className="text-white/40 text-xs mt-2">📍 {p.location}</div>}
             {p.headline&&<div className="text-white/55 text-sm mt-3 italic">"{p.headline}"</div>}
