@@ -1197,6 +1197,152 @@ function ReferralCard({ user, profile, showToast }){
   );
 }
 
+// ═══ #15 EVENT FEEDBACK ═══
+function EventFeedback({ event, user, showToast }){
+  const [rating,setRating]=useState(0);
+  const [comment,setComment]=useState("");
+  const [sent,setSent]=useState(false);
+  const [existing,setExisting]=useState(null);
+  const [avg,setAvg]=useState(null);
+  const isHost = event.creator_id===user?.id;
+  useEffect(()=>{
+    if(String(event.id).startsWith("e")) return;
+    supabase.from("event_feedback").select("*").eq("event_id",event.id)
+      .then(({data})=>{
+        const list=data||[];
+        if(list.length) setAvg((list.reduce((s,f)=>s+(f.rating||0),0)/list.length).toFixed(1));
+        const mine=list.find(f=>f.user_id===user?.id);
+        if(mine){ setExisting(mine); setRating(mine.rating); setComment(mine.comment||""); }
+      }).catch(()=>{});
+  },[event.id,user]);
+  async function send(){
+    if(!rating){ showToast("Pick a star rating first","error"); return; }
+    try{
+      await supabase.from("event_feedback").upsert({event_id:event.id,user_id:user.id,rating,comment},{onConflict:"event_id,user_id"});
+      setSent(true); showToast("Thanks for the feedback ✓");
+    }catch(e){ showToast(e.message||"Could not send","error"); }
+  }
+  if(String(event.id).startsWith("e")) return null;
+  const past=new Date(event.event_date)<new Date();
+  if(!past) return null;
+  return (
+    <div className="rounded-2xl p-4" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-white/70 text-xs font-semibold uppercase tracking-wider">⭐ Event feedback</div>
+        {avg&&<div className="text-amber-300 text-xs font-bold">{avg} avg</div>}
+      </div>
+      {isHost ? (
+        <div className="text-white/40 text-xs">{avg?`Your attendees rated this ${avg} out of 5.`:"No ratings yet."}</div>
+      ) : sent||existing ? (
+        <div className="text-emerald-400 text-xs">✓ Thanks — your feedback was recorded</div>
+      ) : (
+        <>
+          <div className="flex gap-1 mb-2">
+            {[1,2,3,4,5].map(n=>(
+              <button key={n} onClick={()=>setRating(n)} className="text-xl transition-transform"
+                style={{transform:rating>=n?"scale(1.1)":"scale(1)",opacity:rating>=n?1:0.3}}>⭐</button>
+            ))}
+          </div>
+          <textarea value={comment} onChange={e=>setComment(e.target.value)} rows={2} placeholder="Any comments for the host? (optional)"
+            className="w-full rounded-xl px-3 py-2 text-white placeholder-white/25 focus:outline-none resize-none mb-2"
+            style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+          <button onClick={send} className="abaa-gradient w-full py-2 rounded-xl text-white text-xs font-bold">Send feedback</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══ #14 POST-EVENT FOLLOW-UP ═══
+function PostEventFollowUp({ events, attSet, eventAttendees, user, onConnect, showToast }){
+  const [dismissed,setDismissed]=useState(()=>{ try{ return JSON.parse(localStorage.getItem("abaa_followup_dismissed")||"[]"); }catch(e){ return []; } });
+  const now=new Date();
+  // Events I attended that finished in the last 14 days
+  const recent=(events||[]).filter(ev=>{
+    if(String(ev.id).startsWith("e")) return false;
+    if(attSet[ev.id]!=="approved") return false;
+    const d=new Date(ev.event_date);
+    const days=(now-d)/86400000;
+    return days>0 && days<=14 && !dismissed.includes(ev.id);
+  });
+  if(recent.length===0) return null;
+  const ev=recent[0];
+  const others=(eventAttendees[ev.id]||[]).filter(g=>g&&g.id!==user?.id).slice(0,6);
+  if(others.length===0) return null;
+  function dismiss(){
+    const next=[...dismissed,ev.id];
+    setDismissed(next);
+    try{ localStorage.setItem("abaa_followup_dismissed",JSON.stringify(next)); }catch(e){}
+  }
+  return (
+    <Card className="p-4" style={{border:"1px solid rgba(245,158,11,0.3)",background:"linear-gradient(135deg,rgba(245,158,11,0.10),rgba(245,158,11,0.02))"}}>
+      <div className="flex items-start justify-between mb-1">
+        <div>
+          <div className="text-white font-bold text-sm">👋 You attended {ev.title}</div>
+          <div className="text-white/45 text-xs">Connect with people you met — they're just a tap away</div>
+        </div>
+        <button onClick={dismiss} className="text-white/25 text-xs px-1">✕</button>
+      </div>
+      <div className="flex flex-wrap gap-2 mt-3">
+        {others.map(o=>(
+          <button key={o.id} onClick={()=>onConnect(o)}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-full transition-colors hover:bg-white/10"
+            style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>
+            <Av name={o.name} url={o.avatar_url} color={pal(o.id)} size="xs"/>
+            <span className="text-white/75 text-xs">{String(o.name).split(" ")[0]}</span>
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ═══ #16 PROJECT STATUS BOARD ═══
+const PROJECT_STAGES=[
+  {id:"Idea",       emoji:"💡", color:"#a78bfa"},
+  {id:"Validating", emoji:"🔍", color:"#7cb9e8"},
+  {id:"Building",   emoji:"🔨", color:"#f59e0b"},
+  {id:"Launched",   emoji:"🚀", color:"#34d399"},
+];
+function ProjectBoard({ projects, onEdit, onStageChange }){
+  if(!projects||projects.length===0) return null;
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1" style={{scrollbarWidth:"none"}}>
+      {PROJECT_STAGES.map(st=>{
+        const items=projects.filter(p=>(p.project_stage||"Idea")===st.id);
+        return (
+          <div key={st.id} className="flex-shrink-0 rounded-2xl p-3" style={{width:"180px",background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <span>{st.emoji}</span>
+              <span className="text-white text-xs font-bold">{st.id}</span>
+              <span className="text-white/30 text-[10px]">{items.length}</span>
+            </div>
+            <div className="space-y-2">
+              {items.length===0&&<div className="text-white/20 text-[10px] text-center py-3">Empty</div>}
+              {items.map(p=>(
+                <div key={p.id} className="rounded-xl p-2.5" style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
+                  <button onClick={()=>onEdit(p)} className="text-left w-full">
+                    <div className="text-white text-xs font-semibold truncate">{p.project_name}</div>
+                    {p.project_industry&&<div className="text-white/35 text-[10px] truncate">{p.project_industry}</div>}
+                  </button>
+                  <div className="flex gap-1 mt-1.5">
+                    {PROJECT_STAGES.filter(s=>s.id!==st.id).map(s=>(
+                      <button key={s.id} onClick={()=>onStageChange(p,s.id)} title={`Move to ${s.id}`}
+                        className="text-[10px] px-1.5 py-0.5 rounded-md" style={{background:"rgba(255,255,255,0.06)",color:s.color}}>
+                        {s.emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ═══ CONNECTION LABELS (how you met) ═══
 const MEET_LABELS = [
   {id:"event",  emoji:"🎟️", name:"Met at an event"},
@@ -2140,7 +2286,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
   const [myCalendars, setMyCalendars] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [uploadingCover, setUploadingCover] = useState(false);
-  const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false,calendar_id:""});
+  const [form, setForm] = useState({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false,calendar_id:"",repeat:"",repeat_count:4});
   const coverInputRef = useRef();
 
   async function load() {
@@ -2187,7 +2333,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
     if(requireAuth && !requireAuth()) return;
     if(!isApproved){showToast("Your account is pending admin approval","error");return;}
     setEditingId(null);
-    setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false,calendar_id:""});
+    setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false,calendar_id:"",repeat:"",repeat_count:4});
     setShowForm(true);
   }
 
@@ -2224,12 +2370,24 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
         await supabase.from("events").update(payload).eq("id",editingId);
         showToast("Event updated ✓");
       } else {
-        await supabase.from("events").insert({...payload,creator_id:user.id,is_approved: isAdmin?true:false});
+        const rows=[{...payload,creator_id:user.id,is_approved: isAdmin?true:false}];
+        // #13 Recurring events — generate the extra occurrences
+        if(form.repeat){
+          const n=Math.min(12,Math.max(2,parseInt(form.repeat_count)||4));
+          const stepDays = form.repeat==="weekly"?7 : form.repeat==="fortnightly"?14 : 0;
+          for(let i=1;i<n;i++){
+            const d=new Date(payload.event_date);
+            if(stepDays) d.setDate(d.getDate()+stepDays*i);
+            else d.setMonth(d.getMonth()+i); // monthly
+            rows.push({...payload,event_date:d.toISOString(),creator_id:user.id,is_approved: isAdmin?true:false});
+          }
+        }
+        await supabase.from("events").insert(rows);
         showToast(isAdmin?"Event created ✓":"Event submitted — awaiting admin approval ✓");
         if(!isAdmin && user.email) sendEmail("event_created", user.email, { title: payload.title });
       }
       setShowForm(false); setEditingId(null);
-      setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false,calendar_id:""});
+      setForm({title:"",description:"",location:"",event_date:"",max_attendees:"",industry_tags:[],cover_url:"",reg_question:"",guest_list_public:true,hide_location:false,calendar_id:"",repeat:"",repeat_count:4});
       load();
     } catch(e){showToast(e.message,"error");}
     setSaving(false);
@@ -2453,6 +2611,29 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                   className="w-full rounded-2xl px-4 py-3 text-sm text-white focus:outline-none"
                   style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,colorScheme:"dark"}}/>
               </div>
+              <div className="space-y-1.5">
+                <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Repeat</label>
+                <div className="flex gap-2 flex-wrap">
+                  {[{id:"",label:"One-off"},{id:"weekly",label:"Weekly"},{id:"fortnightly",label:"Fortnightly"},{id:"monthly",label:"Monthly"}].map(r=>(
+                    <button key={r.id} onClick={()=>setForm(f=>({...f,repeat:r.id}))}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold"
+                      style={(form.repeat||"")===r.id?{background:"rgba(124,111,224,0.3)",border:"1px solid #7c6fe0",color:"#c4b5fd"}:{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.5)"}}>
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+                {form.repeat&&(
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-white/40 text-xs">Create</span>
+                    <input type="number" min="2" max="12" value={form.repeat_count||4}
+                      onChange={e=>setForm(f=>({...f,repeat_count:e.target.value}))}
+                      className="w-16 rounded-xl px-2 py-1.5 text-white focus:outline-none"
+                      style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+                    <span className="text-white/40 text-xs">occurrences</span>
+                  </div>
+                )}
+              </div>
+
               {myCalendars.length>0&&(
                 <div className="space-y-1.5">
                   <label className="text-white/40 text-xs font-medium uppercase tracking-wider">Add to Calendar (optional)</label>
@@ -2533,6 +2714,13 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
           <button onClick={()=>{setSearch("");setFilterState("");setFilterDate("");}} className="text-white/40 text-xs hover:text-white/70 transition-colors">✕ Clear filters</button>
         )}
       </Card>
+
+      {/* #14 Post-event follow-up prompt */}
+      {user&&(
+        <PostEventFollowUp events={events} attSet={attSet} eventAttendees={eventAttendees} user={user}
+          onConnect={(o)=>{ showToast(`Open Match to connect with ${String(o.name).split(" ")[0]}`); }}
+          showToast={showToast}/>
+      )}
 
       {/* Featured Calendars (follow system) */}
       <CalendarsStrip user={user} showToast={showToast} onFilter={setCalFilter} activeCalendar={calFilter}/>
@@ -2867,8 +3055,9 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                       🔗 Share Event
                     </button>
                   </div>
-                  <div className="mb-4">
+                  <div className="mb-4 space-y-3">
                     <EventAnnouncements event={selectedEvent} isHost={isCreator(selectedEvent)} showToast={showToast} load={load}/>
+                    {user&&<EventFeedback event={selectedEvent} user={user} showToast={showToast}/>}
                   </div>
                   <div className="text-white/35 text-xs font-semibold uppercase tracking-wider mb-2">About this event</div>
                   <p className="text-white/70 text-sm leading-relaxed">{selectedEvent.description||"No description provided."}</p>
@@ -3094,6 +3283,7 @@ function MyProjects({ user, isAdmin, showToast }) {
   const [editing, setEditing] = useState(null); // project being edited, or "new"
   const [saving, setSaving] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
+  const [boardView, setBoardView] = useState(false);
   const blank = {project_name:"",project_pitch:"",project_industry:"",project_stage:"",funding_status:"",team_size:"",project_website:"",roles_needed:[]};
   const [f, setF] = useState(blank);
   const LIMIT = isAdmin ? 100 : 3;
@@ -3226,9 +3416,30 @@ function MyProjects({ user, isAdmin, showToast }) {
         </div>
         <button onClick={startNew} className="px-3 py-1.5 rounded-xl text-sm font-semibold text-white" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>+ New</button>
       </div>
-      {loading&&<div className="text-white/30 text-sm text-center py-4">Loading…</div>}
-      {!loading&&projects.length===0&&<div className="text-white/30 text-sm text-center py-6">No projects yet. Tap "+ New" to add one.</div>}
-      {projects.map(p=>(
+      {loading&&<SkeletonList n={2}/>}
+      {!loading&&projects.length===0&&(
+        <EmptyState emoji="🚀" title="No projects yet"
+          body="Add your first project so founders can discover it and request to join."
+          actionLabel="+ Create a project" onAction={startNew}/>
+      )}
+      {!loading&&projects.length>0&&(
+        <>
+          <div className="flex gap-2">
+            <button onClick={()=>setBoardView(false)} className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+              style={!boardView?{background:"rgba(124,111,224,0.3)",border:"1px solid #7c6fe0",color:"#c4b5fd"}:{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.5)"}}>List</button>
+            <button onClick={()=>setBoardView(true)} className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+              style={boardView?{background:"rgba(124,111,224,0.3)",border:"1px solid #7c6fe0",color:"#c4b5fd"}:{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.5)"}}>Board</button>
+          </div>
+          {boardView&&(
+            <ProjectBoard projects={projects} onEdit={(p)=>startEdit(p)}
+              onStageChange={async(p,stage)=>{
+                try{ await supabase.from("projects").update({project_stage:stage}).eq("id",p.id); load(); showToast(`Moved to ${stage} ✓`); }
+                catch(e){ showToast("Could not move","error"); }
+              }}/>
+          )}
+        </>
+      )}
+      {!boardView&&projects.map(p=>(
         <div key={p.id} className="p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
