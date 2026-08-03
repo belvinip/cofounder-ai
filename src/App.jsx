@@ -980,6 +980,9 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
   const [matchMap, setMatchMap] = useState({});
   const [chat, setChat] = useState(null);
   const [showAllMessages, setShowAllMessages] = useState(false);
+  const [connSearch, setConnSearch] = useState("");
+  const [connLabelFilter, setConnLabelFilter] = useState(null);
+  const [bookingTarget, setBookingTarget] = useState(null);
   const [selectedProfile, setSelectedProfile] = useState(null);
   const connectOpenedRef = useRef(false);
   const [incomingReqs, setIncomingReqs] = useState([]);
@@ -1174,33 +1177,23 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
 
       {/* Messages — accepted connections you can chat with */}
       {acceptedConnections.length>0&&(
-        <div>
-          <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
-            💬 Messages
-            <span className="text-white/35 text-xs font-normal">({acceptedConnections.length})</span>
-          </h3>
-          <div className="space-y-2">
-            {acceptedConnections.slice(0,3).map(({req,other})=>(
-              <button key={req.id} onClick={()=>setChat({matchId:req.id,other})}
-                className="w-full flex items-center gap-3 p-3 rounded-2xl transition-all hover:border-white/20 text-left"
-                style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
+        <button onClick={()=>setShowAllMessages(true)}
+          className="abaa-lift w-full flex items-center gap-3 p-4 rounded-3xl text-left transition-all"
+          style={{background:"linear-gradient(135deg,rgba(124,111,224,0.14),rgba(167,139,250,0.06))",border:"1px solid rgba(167,139,250,0.25)"}}>
+          {/* Stacked avatar preview */}
+          <div className="flex flex-shrink-0" style={{marginLeft:"6px"}}>
+            {acceptedConnections.slice(0,4).map(({other})=>(
+              <div key={other.id} style={{marginLeft:"-10px"}}>
                 <Av name={other.name} url={other.avatar_url} color={pal(other.id)} size="sm" ring/>
-                <div className="flex-1 min-w-0">
-                  <div className="text-white font-semibold text-sm truncate">{other.name}</div>
-                  <div className="text-white/40 text-xs truncate">{other.role||"Tap to open chat"}</div>
-                </div>
-                <span className="text-white/30 text-lg">💬</span>
-              </button>
+              </div>
             ))}
-            {acceptedConnections.length>3&&(
-              <button onClick={()=>setShowAllMessages(true)}
-                className="w-full py-2.5 rounded-2xl text-sm font-semibold transition-all"
-                style={{background:"rgba(124,111,224,0.12)",border:"1px solid rgba(124,111,224,0.3)",color:"#a78bfa"}}>
-                View all messages ({acceptedConnections.length})
-              </button>
-            )}
           </div>
-        </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-white font-bold text-sm">My Connections</div>
+            <div className="text-white/45 text-xs">{acceptedConnections.length} connected · tap to browse & message</div>
+          </div>
+          <span className="text-white/30 text-xl">›</span>
+        </button>
       )}
 
       {/* Search + filter bar */}
@@ -1341,32 +1334,92 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
           className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/80"
           onClick={e=>e.target===e.currentTarget&&setShowAllMessages(false)}>
           <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
-            className="w-full md:max-w-md flex flex-col rounded-t-3xl md:rounded-3xl mb-[72px] md:mb-0"
-            style={{height:"80vh",maxHeight:"680px",background:"#0f1320",border:`1px solid ${BORDER}`}}>
-            <div className="flex-shrink-0 flex items-center justify-between p-5 border-b" style={{borderColor:BORDER}}>
-              <div className="text-white font-bold text-lg">💬 All Messages</div>
-              <button onClick={()=>setShowAllMessages(false)} className="w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:text-white" style={{background:"rgba(255,255,255,0.06)"}}>✕</button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {acceptedConnections.map(({req,other})=>(
-                <div key={req.id}
-                  className="w-full flex items-center gap-3 p-3 rounded-2xl transition-all"
-                  style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
-                  <button onClick={()=>{setShowAllMessages(false);setChat({matchId:req.id,other});}} className="flex items-center gap-3 flex-1 min-w-0 text-left">
-                    <Av name={other.name} url={other.avatar_url} color={pal(other.id)} size="sm" ring/>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white font-semibold text-sm truncate">{other.name}</div>
-                      <div className="text-white/40 text-xs truncate">{other.role||"Tap to open chat"}</div>
-                    </div>
-                  </button>
-                  <ConnectionLabelPicker matchId={req.id} current={req.meet_label} showToast={showToast}
-                    onSaved={(id)=>{ req.meet_label=id; setMatchMap(m=>({...m})); }}/>
+            className="w-full md:max-w-md flex flex-col rounded-t-3xl md:rounded-3xl"
+            style={{height:"85vh",maxHeight:"720px",background:"#0f1320",border:`1px solid ${BORDER}`}}>
+
+            {/* Header */}
+            <div className="flex-shrink-0 p-5 pb-3" style={{borderBottom:`1px solid ${BORDER}`}}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="text-white font-bold text-lg">My Connections</div>
+                  <div className="text-white/40 text-xs">{acceptedConnections.length} people you're connected with</div>
                 </div>
-              ))}
+                <button onClick={()=>setShowAllMessages(false)} className="w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:text-white" style={{background:"rgba(255,255,255,0.06)"}}>✕</button>
+              </div>
+              {/* Search */}
+              <input value={connSearch} onChange={e=>setConnSearch(e.target.value)} placeholder="Search by name, role or label…"
+                className="w-full rounded-2xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none"
+                style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+              {/* Label filter chips */}
+              <div className="flex gap-1.5 overflow-x-auto pt-3 -mx-1 px-1" style={{scrollbarWidth:"none"}}>
+                <button onClick={()=>setConnLabelFilter(null)}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold"
+                  style={!connLabelFilter?{background:"rgba(124,111,224,0.3)",color:"#c4b5fd",border:"1px solid #7c6fe0"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>
+                  All
+                </button>
+                {MEET_LABELS.map(l=>(
+                  <button key={l.id} onClick={()=>setConnLabelFilter(connLabelFilter===l.id?null:l.id)}
+                    className="flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
+                    style={connLabelFilter===l.id?{background:"rgba(124,111,224,0.3)",color:"#c4b5fd",border:"1px solid #7c6fe0"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.5)",border:`1px solid ${BORDER}`}}>
+                    {l.emoji} {l.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+              {(()=>{
+                const q=connSearch.trim().toLowerCase();
+                const filtered=acceptedConnections.filter(({req,other})=>{
+                  if(connLabelFilter && req.meet_label!==connLabelFilter) return false;
+                  if(!q) return true;
+                  const lbl=labelOf(req.meet_label)?.name?.toLowerCase()||"";
+                  return (other.name||"").toLowerCase().includes(q) || (other.role||"").toLowerCase().includes(q) || lbl.includes(q);
+                });
+                if(filtered.length===0) return <div className="text-white/30 text-sm text-center py-10">No connections match</div>;
+                return filtered.map(({req,other})=>(
+                  <div key={req.id} className="abaa-lift rounded-2xl p-3.5" style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
+                    <div className="flex items-center gap-3">
+                      <button onClick={()=>{setShowAllMessages(false);setSelectedProfile(other);}}>
+                        <Av name={other.name} url={other.avatar_url} color={pal(other.id)} size="md" ring/>
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <button onClick={()=>{setShowAllMessages(false);setSelectedProfile(other);}} className="text-left block w-full">
+                          <div className="text-white font-semibold text-sm truncate">{other.name}</div>
+                          <div className="text-white/40 text-xs truncate">{other.role||other.location||"View profile"}</div>
+                        </button>
+                      </div>
+                      <ConnectionLabelPicker matchId={req.id} current={req.meet_label} showToast={showToast}
+                        onSaved={(id)=>{ req.meet_label=id; setMatchMap(m=>({...m})); }}/>
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={()=>{setShowAllMessages(false);setChat({matchId:req.id,other});}}
+                        className="flex-1 py-2 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-1.5"
+                        style={{background:"rgba(124,111,224,0.18)",border:"1px solid rgba(167,139,250,0.35)"}}>
+                        💬 Message
+                      </button>
+                      <a href={`${window.location.origin}?card=${other.id}`} target="_blank" rel="noreferrer"
+                        className="flex-1 py-2 rounded-xl text-xs font-semibold text-white/70 flex items-center justify-center gap-1.5"
+                        style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
+                        💳 Card
+                      </a>
+                      {other.booking_enabled&&(
+                        <button onClick={()=>{setShowAllMessages(false);setBookingTarget(other);}}
+                          className="flex-1 py-2 rounded-xl text-xs font-semibold text-white/70 flex items-center justify-center gap-1.5"
+                          style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
+                          📅 Book
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
+      <AnimatePresence>{bookingTarget&&<BookingModal key="connbooking" host={bookingTarget} onClose={()=>setBookingTarget(null)}/>}</AnimatePresence>
       <AnimatePresence>{selectedProfile&&<ProfileModal p={selectedProfile} onClose={()=>setSelectedProfile(null)} onRequest={handleRequest} matchState={matchMap[selectedProfile.id]} user={user} isAdmin={isAdmin} showToast={showToast} onLoginRequired={()=>{setSelectedProfile(null);requireAuth&&requireAuth();}}/>}</AnimatePresence>
     </motion.div>
   );
