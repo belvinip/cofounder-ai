@@ -1069,6 +1069,134 @@ function NotificationCenter({ user, notif, onClose, onGo }){
   );
 }
 
+// ═══ #4 GLOBAL SEARCH ═══
+function GlobalSearch({ user, onClose, onOpenProfile, onGoTab }){
+  const [q,setQ]=useState("");
+  const [res,setRes]=useState({people:[],projects:[],events:[]});
+  const [loading,setLoading]=useState(false);
+  useEffect(()=>{
+    const term=q.trim();
+    if(term.length<2){ setRes({people:[],projects:[],events:[]}); return; }
+    setLoading(true);
+    const t=setTimeout(async()=>{
+      try{
+        const like=`%${term}%`;
+        const [pp,pj,ev]=await Promise.all([
+          supabase.from("profiles").select("id,name,role,avatar_url,location,verified").eq("is_approved",true)
+            .or(`name.ilike.${like},role.ilike.${like},location.ilike.${like},headline.ilike.${like}`).limit(6),
+          supabase.from("projects").select("id,project_name,project_pitch,project_industry").
+            or(`project_name.ilike.${like},project_pitch.ilike.${like},project_industry.ilike.${like}`).limit(6),
+          supabase.from("events").select("id,title,event_date,location").eq("is_approved",true)
+            .or(`title.ilike.${like},description.ilike.${like},location.ilike.${like}`).limit(6),
+        ]);
+        setRes({people:pp.data||[],projects:pj.data||[],events:ev.data||[]});
+      }catch(e){}
+      setLoading(false);
+    },300);
+    return ()=>clearTimeout(t);
+  },[q]);
+  const total=res.people.length+res.projects.length+res.events.length;
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      className="fixed inset-0 z-[90] flex items-start justify-center bg-black/85 pt-14 px-4"
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <motion.div initial={{y:-16,opacity:0}} animate={{y:0,opacity:1}}
+        className="w-full max-w-md rounded-3xl overflow-hidden flex flex-col" style={{background:"#0f1320",border:`1px solid ${BORDER}`,maxHeight:"80vh"}}>
+        <div className="p-4 flex gap-2" style={{borderBottom:`1px solid ${BORDER}`}}>
+          <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search people, projects, events…"
+            className="flex-1 rounded-2xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none"
+            style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
+          <button onClick={onClose} className="text-white/40 text-lg px-2">✕</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-4">
+          {q.trim().length<2&&<div className="text-white/30 text-xs text-center py-8">Type at least 2 characters</div>}
+          {loading&&q.trim().length>=2&&<SkeletonList n={2}/>}
+          {!loading&&q.trim().length>=2&&total===0&&<div className="text-white/30 text-xs text-center py-8">No results for "{q}"</div>}
+          {res.people.length>0&&(
+            <div>
+              <div className="text-white/35 text-[10px] uppercase tracking-wider mb-2 px-1">People</div>
+              <div className="space-y-1.5">{res.people.map(p=>(
+                <button key={p.id} onClick={()=>{onOpenProfile(p);onClose();}}
+                  className="w-full flex items-center gap-3 p-2.5 rounded-2xl text-left hover:bg-white/5"
+                  style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                  <Av name={p.name} url={p.avatar_url} color={pal(p.id)} size="sm"/>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-xs font-semibold truncate flex items-center gap-1">{p.name}<VerifiedBadge verified={p.verified}/></div>
+                    <div className="text-white/40 text-[11px] truncate">{p.role||p.location}</div>
+                  </div>
+                </button>
+              ))}</div>
+            </div>
+          )}
+          {res.projects.length>0&&(
+            <div>
+              <div className="text-white/35 text-[10px] uppercase tracking-wider mb-2 px-1">Projects</div>
+              <div className="space-y-1.5">{res.projects.map(p=>(
+                <button key={p.id} onClick={()=>{onGoTab("projects");onClose();}}
+                  className="w-full p-2.5 rounded-2xl text-left hover:bg-white/5"
+                  style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                  <div className="text-white text-xs font-semibold truncate">🚀 {p.project_name}</div>
+                  <div className="text-white/40 text-[11px] truncate">{p.project_pitch}</div>
+                </button>
+              ))}</div>
+            </div>
+          )}
+          {res.events.length>0&&(
+            <div>
+              <div className="text-white/35 text-[10px] uppercase tracking-wider mb-2 px-1">Events</div>
+              <div className="space-y-1.5">{res.events.map(e=>(
+                <button key={e.id} onClick={()=>{onGoTab("events");onClose();}}
+                  className="w-full p-2.5 rounded-2xl text-left hover:bg-white/5"
+                  style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                  <div className="text-white text-xs font-semibold truncate">🎟️ {e.title}</div>
+                  <div className="text-white/40 text-[11px] truncate">{new Date(e.event_date).toLocaleDateString("en-AU",{day:"numeric",month:"short"})} · {e.location}</div>
+                </button>
+              ))}</div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ═══ #20 REFERRALS ═══
+function ReferralCard({ user, profile, showToast }){
+  const [count,setCount]=useState(null);
+  const link=`${window.location.origin}?ref=${user?.id}`;
+  useEffect(()=>{
+    if(!user) return;
+    supabase.from("profiles").select("id",{count:"exact",head:true}).eq("referred_by",user.id)
+      .then(({count})=>setCount(count||0)).catch(()=>setCount(0));
+  },[user]);
+  const tiers=[{n:3,label:"Connector"},{n:10,label:"Community Builder"},{n:25,label:"Founding Champion"}];
+  const nextTier=tiers.find(t=>(count||0)<t.n);
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-white font-semibold text-sm">🎁 Invite founders</div>
+        {count!=null&&<div className="text-purple-300 text-xs font-bold">{count} joined</div>}
+      </div>
+      <div className="text-white/40 text-xs mb-3">
+        {nextTier ? `${nextTier.n-(count||0)} more to unlock "${nextTier.label}"` : "You've unlocked every tier — thank you! 🏆"}
+      </div>
+      {nextTier&&(
+        <div className="h-1.5 rounded-full mb-3" style={{background:"rgba(255,255,255,0.08)"}}>
+          <div className="h-full rounded-full" style={{background:"linear-gradient(90deg,#7c6fe0,#a78bfa)",width:`${Math.min(100,((count||0)/nextTier.n)*100)}%`}}/>
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button onClick={async()=>{
+          try{ if(navigator.share) await navigator.share({title:"Join ABAA Community",text:"Join me on ABAA — find co-founders and partners.",url:link});
+               else { await navigator.clipboard.writeText(link); showToast("Invite link copied ✓"); } }catch(e){}
+        }} className="abaa-gradient flex-1 py-2.5 rounded-2xl text-white text-xs font-bold">Share invite link</button>
+        <button onClick={()=>{navigator.clipboard.writeText(link);showToast("Invite link copied ✓");}}
+          className="px-4 py-2.5 rounded-2xl text-white/60 text-xs font-semibold" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>Copy</button>
+      </div>
+    </Card>
+  );
+}
+
 // ═══ CONNECTION LABELS (how you met) ═══
 const MEET_LABELS = [
   {id:"event",  emoji:"🎟️", name:"Met at an event"},
@@ -4953,6 +5081,8 @@ export default function App() {
   const [session,setSession]=useState(undefined);
   const [profile,setProfile]=useState(null);
   const connectId = (()=>{ try { return new URLSearchParams(window.location.search).get("connect"); } catch(e){ return null; } })();
+  // Remember who referred this visitor so it survives the Google sign-in redirect
+  useEffect(()=>{ try { const r=new URLSearchParams(window.location.search).get("ref"); if(r) localStorage.setItem("abaa_ref",r); } catch(e){} },[]);
   const [tab,setTab]=useState(()=>{
     // Deep-link from booking emails: ?bookings=1 opens the Profile tab (where bookings live)
     try {
@@ -4964,6 +5094,7 @@ export default function App() {
   });
   const [notif,setNotif]=useState({partner:0,project:0,events:0,messages:0,bookings:0});
   const [showNotifs,setShowNotifs]=useState(false);
+  const [showSearch,setShowSearch]=useState(false);
   const [checklistDismissed,setChecklistDismissed]=useState(false);
   const processedUserRef = useRef(null);
   const [toast,setToast]=useState(null);
@@ -5061,7 +5192,9 @@ export default function App() {
     let isNew=false;
     if(!data){
       isNew=true;
-      const{data:created}=await supabase.from("profiles").upsert({id:u.id,email:u.email,name:u.user_metadata?.full_name||u.email?.split("@")[0],avatar_url:u.user_metadata?.avatar_url,is_admin:u.email===ADMIN_EMAIL,is_approved:u.email===ADMIN_EMAIL}).select().single();
+      let refBy=null;
+      try { const r=new URLSearchParams(window.location.search).get("ref")||localStorage.getItem("abaa_ref"); if(r&&r!==u.id) refBy=r; } catch(e){}
+      const{data:created}=await supabase.from("profiles").upsert({id:u.id,email:u.email,name:u.user_metadata?.full_name||u.email?.split("@")[0],avatar_url:u.user_metadata?.avatar_url,is_admin:u.email===ADMIN_EMAIL,is_approved:u.email===ADMIN_EMAIL,referred_by:refBy}).select().single();
       data=created;
     }
     // Welcome email — only once ever (welcomed flag), and only when not already processed this session
@@ -5167,8 +5300,12 @@ export default function App() {
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-sm" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>C</div>
           <span className="text-white font-bold">CoFounder AI</span>
+          <button onClick={()=>setShowSearch(true)} className="ml-3 w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
+            style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}} title="Search everything">
+            <span className="text-sm">🔍</span>
+          </button>
           {user&&(
-            <button onClick={()=>setShowNotifs(true)} className="relative ml-3 w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
+            <button onClick={()=>setShowNotifs(true)} className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
               style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
               <span className="text-sm">🔔</span>
               {(notif.partner+notif.project+notif.events+notif.messages+notif.bookings)>0&&(
@@ -5243,6 +5380,10 @@ export default function App() {
 
       {/* Mobile Bottom Nav — matching reference image */}
       <OfflineBanner/>
+      <AnimatePresence>
+        {showSearch&&<GlobalSearch key="gsearch" user={user} onClose={()=>setShowSearch(false)}
+          onOpenProfile={(p)=>{ setTab("matching"); }} onGoTab={(t)=>setTab(t)}/>}
+      </AnimatePresence>
       <AnimatePresence>
         {showNotifs&&<NotificationCenter key="notifs" user={user} notif={notif}
           onClose={()=>setShowNotifs(false)} onGo={(t)=>setTab(t)}/>}
