@@ -920,6 +920,155 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
 
 // MATCH TAB
 // ════════════════════════════════════════════════════════
+// ═══ #18 SKELETON LOADERS ═══
+function Skeleton({ className="", style={} }){
+  return <div className={`abaa-skeleton rounded-2xl ${className}`} style={style}/>;
+}
+function SkeletonCard(){
+  return (
+    <div className="rounded-3xl p-4 space-y-3" style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
+      <div className="flex items-center gap-3">
+        <Skeleton style={{width:"44px",height:"44px",borderRadius:"999px"}}/>
+        <div className="flex-1 space-y-2">
+          <Skeleton style={{height:"12px",width:"55%"}}/>
+          <Skeleton style={{height:"10px",width:"35%"}}/>
+        </div>
+      </div>
+      <Skeleton style={{height:"10px",width:"90%"}}/>
+      <Skeleton style={{height:"10px",width:"70%"}}/>
+    </div>
+  );
+}
+function SkeletonList({ n=3 }){
+  return <div className="space-y-3">{Array.from({length:n}).map((_,i)=><SkeletonCard key={i}/>)}</div>;
+}
+
+// ═══ #2 EMPTY STATES ═══
+function EmptyState({ emoji="✨", title, body, actionLabel, onAction }){
+  return (
+    <div className="text-center py-10 px-6">
+      <div className="text-4xl mb-3 abaa-float">{emoji}</div>
+      <div className="text-white font-semibold text-sm mb-1">{title}</div>
+      {body&&<div className="text-white/40 text-xs mb-4 max-w-xs mx-auto leading-relaxed">{body}</div>}
+      {actionLabel&&onAction&&(
+        <button onClick={onAction} className="abaa-gradient px-5 py-2.5 rounded-2xl text-white text-sm font-semibold">
+          {actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ═══ #19 OFFLINE BANNER ═══
+function OfflineBanner(){
+  const [offline,setOffline]=useState(!navigator.onLine);
+  useEffect(()=>{
+    const on=()=>setOffline(false), off=()=>setOffline(true);
+    window.addEventListener("online",on); window.addEventListener("offline",off);
+    return ()=>{ window.removeEventListener("online",on); window.removeEventListener("offline",off); };
+  },[]);
+  if(!offline) return null;
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[200] py-2 text-center text-xs font-semibold text-white"
+      style={{background:"linear-gradient(90deg,#f59e0b,#ef4444)"}}>
+      ⚠️ You're offline — changes will retry when you reconnect
+    </div>
+  );
+}
+
+// ═══ #7 VERIFIED BADGE ═══
+function VerifiedBadge({ verified, size="sm" }){
+  if(!verified) return null;
+  const s = size==="lg" ? "16px" : "13px";
+  return (
+    <span title="Verified member" className="inline-flex items-center justify-center rounded-full flex-shrink-0"
+      style={{width:s,height:s,background:"linear-gradient(135deg,#3b82f6,#0ea5e9)",fontSize:size==="lg"?"10px":"8px",color:"#fff",fontWeight:"bold",lineHeight:1}}>✓</span>
+  );
+}
+
+// ═══ #1 ONBOARDING CHECKLIST ═══
+function OnboardingChecklist({ profile, connectionCount, eventCount, onGo, onDismiss }){
+  const steps=[
+    {id:"photo", label:"Add a profile photo", done:!!profile?.avatar_url, tab:"profile"},
+    {id:"role",  label:"Add your role & location", done:!!(profile?.role&&profile?.location), tab:"profile"},
+    {id:"bio",   label:"Write a short bio", done:!!profile?.bio, tab:"profile"},
+    {id:"skills",label:"Add your skills", done:(profile?.skills||[]).length>0, tab:"profile"},
+    {id:"conn",  label:"Make your first connection", done:connectionCount>0, tab:"matching"},
+    {id:"event", label:"Register for an event", done:eventCount>0, tab:"events"},
+  ];
+  const done=steps.filter(s=>s.done).length;
+  if(done===steps.length) return null;
+  const next=steps.find(s=>!s.done);
+  const pct=Math.round((done/steps.length)*100);
+  return (
+    <Card className="p-4" style={{border:"1px solid rgba(167,139,250,0.3)",background:"linear-gradient(135deg,rgba(124,111,224,0.12),rgba(167,139,250,0.04))"}}>
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <div className="text-white font-bold text-sm">🚀 Get set up</div>
+          <div className="text-white/45 text-xs">{done} of {steps.length} steps done</div>
+        </div>
+        <button onClick={onDismiss} className="text-white/25 text-xs px-1">✕</button>
+      </div>
+      <div className="h-1.5 rounded-full mb-3" style={{background:"rgba(255,255,255,0.08)"}}>
+        <motion.div className="h-full rounded-full" animate={{width:`${pct}%`}}
+          style={{background:"linear-gradient(90deg,#7c6fe0,#a78bfa)",width:`${pct}%`}}/>
+      </div>
+      <div className="space-y-1.5 mb-3">
+        {steps.map(s=>(
+          <div key={s.id} className="flex items-center gap-2 text-xs">
+            <span style={{color:s.done?"#34d399":"rgba(255,255,255,0.25)"}}>{s.done?"✓":"○"}</span>
+            <span style={{color:s.done?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.75)",textDecoration:s.done?"line-through":"none"}}>{s.label}</span>
+          </div>
+        ))}
+      </div>
+      {next&&(
+        <button onClick={()=>onGo(next.tab)} className="abaa-gradient w-full py-2.5 rounded-2xl text-white text-xs font-bold">
+          Next: {next.label} →
+        </button>
+      )}
+    </Card>
+  );
+}
+
+// ═══ #11 NOTIFICATION CENTER ═══
+function NotificationCenter({ user, notif, onClose, onGo }){
+  const items=[];
+  if(notif.partner>0) items.push({emoji:"🤝",title:`${notif.partner} partnership request${notif.partner>1?"s":""}`,body:"Someone wants to connect with you",tab:"matching"});
+  if(notif.project>0) items.push({emoji:"🚀",title:`${notif.project} project join request${notif.project>1?"s":""}`,body:"People want to join your project",tab:"projects"});
+  if(notif.events>0)  items.push({emoji:"🎟️",title:`${notif.events} event registration${notif.events>1?"s":""}`,body:"Awaiting your approval",tab:"events"});
+  if(notif.messages>0)items.push({emoji:"💬",title:`${notif.messages} unread message${notif.messages>1?"s":""}`,body:"Open your connections to reply",tab:"matching"});
+  if(notif.bookings>0)items.push({emoji:"📅",title:`${notif.bookings} meeting request${notif.bookings>1?"s":""}`,body:"Accept or decline in your profile",tab:"profile"});
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      className="fixed inset-0 z-[90] flex items-start justify-center bg-black/80 pt-16 px-4"
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <motion.div initial={{y:-20,opacity:0}} animate={{y:0,opacity:1}}
+        className="w-full max-w-sm rounded-3xl overflow-hidden" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
+        <div className="flex items-center justify-between p-4" style={{borderBottom:`1px solid ${BORDER}`}}>
+          <div className="text-white font-bold text-sm">🔔 Notifications</div>
+          <button onClick={onClose} className="text-white/40 text-lg px-1">✕</button>
+        </div>
+        <div className="p-3 space-y-2 max-h-[60vh] overflow-y-auto">
+          {items.length===0
+            ? <div className="text-white/30 text-xs text-center py-8">You're all caught up ✨</div>
+            : items.map((it,i)=>(
+                <button key={i} onClick={()=>{onGo(it.tab);onClose();}}
+                  className="w-full flex items-start gap-3 p-3 rounded-2xl text-left transition-colors hover:bg-white/5"
+                  style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                  <span className="text-lg">{it.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-xs font-semibold">{it.title}</div>
+                    <div className="text-white/40 text-[11px]">{it.body}</div>
+                  </div>
+                  <span className="text-white/25">›</span>
+                </button>
+              ))}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ═══ CONNECTION LABELS (how you met) ═══
 const MEET_LABELS = [
   {id:"event",  emoji:"🎟️", name:"Met at an event"},
@@ -4813,7 +4962,9 @@ export default function App() {
     } catch(e){}
     return "events";
   });
-  const [notif,setNotif]=useState({partner:0,project:0,events:0,messages:0});
+  const [notif,setNotif]=useState({partner:0,project:0,events:0,messages:0,bookings:0});
+  const [showNotifs,setShowNotifs]=useState(false);
+  const [checklistDismissed,setChecklistDismissed]=useState(false);
   const processedUserRef = useRef(null);
   const [toast,setToast]=useState(null);
   const [showOnboard,setShowOnboard]=useState(false);
@@ -4881,7 +5032,8 @@ export default function App() {
           const {data:unread}=await supabase.from("messages").select("id").neq("sender_id",uid).is("read_at",null).in("match_id",matchIds);
           unreadCount=(unread||[]).length;
         }
-        if(!cancelled) setNotif({partner:partnerCount, project:projectCount, events:evCount, messages:unreadCount});
+        const {data:bk}=await supabase.from("bookings").select("id").eq("host_id",uid).eq("status","pending");
+        if(!cancelled) setNotif({partner:partnerCount, project:projectCount, events:evCount, messages:unreadCount, bookings:(bk||[]).length});
       } catch(e){}
     }
     loadNotif();
@@ -5015,6 +5167,17 @@ export default function App() {
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-sm" style={{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)"}}>C</div>
           <span className="text-white font-bold">CoFounder AI</span>
+          {user&&(
+            <button onClick={()=>setShowNotifs(true)} className="relative ml-3 w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
+              style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
+              <span className="text-sm">🔔</span>
+              {(notif.partner+notif.project+notif.events+notif.messages+notif.bookings)>0&&(
+                <span className="abaa-pulse absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{background:"#ef4444"}}>
+                  {Math.min(9,notif.partner+notif.project+notif.events+notif.messages+notif.bookings)}{(notif.partner+notif.project+notif.events+notif.messages+notif.bookings)>9?"+":""}
+                </span>
+              )}
+            </button>
+          )}
         </div>
         <nav className="flex items-center gap-1">
           {NAV.map(n=>{const active=tab===n.id;return(
@@ -5079,6 +5242,12 @@ export default function App() {
       </main>
 
       {/* Mobile Bottom Nav — matching reference image */}
+      <OfflineBanner/>
+      <AnimatePresence>
+        {showNotifs&&<NotificationCenter key="notifs" user={user} notif={notif}
+          onClose={()=>setShowNotifs(false)} onGo={(t)=>setTab(t)}/>}
+      </AnimatePresence>
+
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30"
         style={{background:"rgba(10,14,26,0.95)",backdropFilter:"blur(20px)",borderTop:`1px solid ${BORDER}`,
                 transform:modalOpen?"translateY(110%)":"translateY(0)",

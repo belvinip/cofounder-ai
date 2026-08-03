@@ -49,3 +49,11 @@ body { margin: 0; background: #07090f; }
 
 /* Nav icon micro-interaction */
 .abaa-nav-active { animation: abaa-fade-up .25s ease-out both; }
+
+/* Skeleton shimmer */
+@keyframes abaa-skel { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+.abaa-skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.10) 37%, rgba(255,255,255,.04) 63%);
+  background-size: 200% 100%;
+  animation: abaa-skel 1.4s ease-in-out infinite;
+}
