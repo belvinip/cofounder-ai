@@ -19,7 +19,7 @@ const cors = {
 };
 
 // Simple branded HTML wrapper
-function wrap(title: string, body: string, cta?: { label: string; url: string }) {
+function wrap(title: string, body: string, cta?: { label: string; url: string }, unsub?: string) {
   return `<!DOCTYPE html><html><body style="margin:0;background:#0a0e1a;font-family:-apple-system,Segoe UI,Roboto,sans-serif;">
     <div style="max-width:480px;margin:0 auto;padding:32px 24px;">
       <div style="background:#14182a;border:1px solid #232a42;border-radius:20px;padding:32px;">
@@ -27,7 +27,7 @@ function wrap(title: string, body: string, cta?: { label: string; url: string })
         <h1 style="color:#fff;font-size:20px;margin:16px 0;">${title}</h1>
         <div style="color:#b8c0d8;font-size:15px;line-height:1.6;">${body}</div>
         ${cta ? `<a href="${cta.url}" style="display:inline-block;margin-top:24px;background:linear-gradient(135deg,#7c6fe0,#a78bfa);color:#fff;text-decoration:none;padding:12px 28px;border-radius:14px;font-weight:600;">${cta.label}</a>` : ""}
-        <div style="color:#566;font-size:12px;margin-top:32px;border-top:1px solid #232a42;padding-top:16px;">You're receiving this because you're part of the ABAA founder community.</div>
+        <div style="color:#566;font-size:12px;margin-top:32px;border-top:1px solid #232a42;padding-top:16px;">${unsub ? `You received this because your business card was shared with an ABAA member. <a href="${unsub}" style="color:#8b93ab;">Unsubscribe</a>` : "You're receiving this because you're part of the ABAA founder community."}</div>
       </div>
     </div></body></html>`;
 }
@@ -141,6 +141,27 @@ function buildEmail(type: string, data: any): { subject: string; html: string } 
           `<div style="color:#8b93ab;font-size:13px;margin-bottom:12px;">Regarding <strong style="color:#fff;">${data.title || "your event"}</strong></div>
            <div style="background:#0d1120;border:1px solid #232a42;border-radius:14px;padding:16px;color:#b8c0d8;white-space:pre-wrap;">${data.body || ""}</div>`,
           cta("View event", "")) };
+    case "card_exchange":
+      return { subject: `${data.fromName || "An ABAA member"} shared their contact details with you`,
+        html: wrap(`Great to meet you, ${data.theirName || "there"}!`,
+          `<strong>${data.fromName || "An ABAA member"}</strong>${data.fromRole ? ` (${data.fromRole}${data.fromCompany ? `, ${data.fromCompany}` : ""})` : ""} saved your business card and wanted to share their details with you.
+           <div style="background:#0d1120;border:1px solid #232a42;border-radius:14px;padding:16px;margin:18px 0;">
+             ${data.fromPhoto ? `<img src="${data.fromPhoto}" width="56" height="56" style="border-radius:999px;margin-bottom:10px;"/>` : ""}
+             <div style="color:#fff;font-size:16px;font-weight:600;">${data.fromName || ""}</div>
+             ${data.fromRole ? `<div style="color:#8b93ab;font-size:13px;margin-bottom:10px;">${data.fromRole}${data.fromCompany ? ` &middot; ${data.fromCompany}` : ""}</div>` : ""}
+             ${data.fromEmail ? `<div style="color:#b8c0d8;font-size:14px;">&#9993;&#65039; ${data.fromEmail}</div>` : ""}
+             ${data.fromMobile ? `<div style="color:#b8c0d8;font-size:14px;">&#128241; ${data.fromMobile}</div>` : ""}
+             ${data.fromWhatsapp ? `<div style="color:#b8c0d8;font-size:14px;">&#128172; WhatsApp: ${data.fromWhatsapp}</div>` : ""}
+             ${data.fromLinkedin ? `<div style="color:#b8c0d8;font-size:14px;">&#128279; ${data.fromLinkedin}</div>` : ""}
+             ${data.fromWebsite ? `<div style="color:#b8c0d8;font-size:14px;">&#127760; ${data.fromWebsite}</div>` : ""}
+           </div>
+           <a href="${data.cardUrl}" style="color:#a78bfa;font-size:14px;">&#128190; Open their digital card to save these details to your phone</a>
+           ${data.bookingUrl ? `<br><br>Want to continue the conversation? <a href="${data.bookingUrl}" style="color:#a78bfa;">Book a catch-up at a time that suits you.</a>` : ""}
+           <br><br><div style="border-top:1px solid #232a42;padding-top:14px;color:#8b93ab;font-size:13px;">
+             ABAA Community is a network for Australian founders &mdash; matching co-founders, sharing projects and running events. Join free to build your own digital card and connect with ${data.fromName || "them"}.
+           </div>`,
+          { label: "\u2728 Join ABAA Community \u2014 Free", url: data.joinUrl || APP_URL },
+          data.unsubUrl) };
     case "booking_request":
       return { subject: `📅 Meeting request from ${data.guestName || "someone"} — ${data.when || ""}`,
         html: wrap("You have a new meeting request",
