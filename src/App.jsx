@@ -1410,6 +1410,293 @@ function SavedSearches({ user, currentFilters, onApply, showToast }){
   );
 }
 
+// ═══ BUSINESS CARD SCANNER (OCR → contact → invite) ═══
+function parseCardText(text){
+  const lines=String(text||"").split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const joined=lines.join(" ");
+  // Email
+  const email=(joined.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)||[])[0]||"";
+  // Australian & international phone formats
+  const phoneRaw=(joined.match(/(\+?61[\s-]?\d[\d\s-]{7,})|(\b0[2-478][\s-]?\d{4}[\s-]?\d{4}\b)|(\b04\d{2}[\s-]?\d{3}[\s-]?\d{3}\b)/)||[])[0]||"";
+  const mobile=phoneRaw.replace(/[^\d+]/g,"");
+  // Website (ignore the email's domain)
+  let website=(joined.match(/\b(?:https?:\/\/)?(?:www\.)?[A-Za-z0-9-]+\.(?:com|com\.au|net|org|io|co|au)\b(?:\/\S*)?/i)||[])[0]||"";
+  if(email && website && email.toLowerCase().includes(website.toLowerCase().replace(/^www\./,""))) website="";
+  // Name = first line that looks like a person (2-3 words, no digits/@)
+  const nameLine=lines.find(l=>
+    /^[A-Za-z][A-Za-z.'-]*(\s+[A-Za-z][A-Za-z.'-]*){1,2}$/.test(l) &&
+    !/@|\d|www|ltd|pty|inc/i.test(l) && l.length<40
+  )||"";
+  // Title
+  const titleLine=lines.find(l=>/founder|ceo|cto|coo|cfo|director|manager|consultant|engineer|designer|advisor|partner|owner|principal|agent|specialist|lead|head of/i.test(l))||"";
+  // Company: a line with a business suffix, else a non-name non-contact line
+  const companyLine=lines.find(l=>/pty|ltd|limited|group|co\.|company|studio|agency|labs|holdings|services|solutions/i.test(l))
+    || lines.find(l=>l!==nameLine && l!==titleLine && !/@|www|\d{4}/.test(l) && l.length>2 && l.length<40) || "";
+  return { name:nameLine, email, mobile, website, title:titleLine, company:companyLine, raw:text };
+}
+
+function CardScanner({ user, profile, showToast, onClose, onSaved }){
+  const [step,setStep]=useState("capture"); // capture | reading | confirm | matched | done
+  const [progress,setProgress]=useState(0);
+  const [fields,setFields]=useState({name:"",email:"",mobile:"",company:"",title:"",website:"",note:""});
+  const [existing,setExisting]=useState(null);
+  const [saving,setSaving]=useState(false);
+  const fileRef=useRef();
+
+  async function handleImage(file){
+    if(!file) return;
+    setStep("reading"); setProgress(0);
+    try{
+      const Tesseract=(await import("tesseract.js")).default;
+      const { data }=await Tesseract.recognize(file,"eng",{
+        logger:m=>{ if(m.status==="recognizing text") setProgress(Math.round((m.progress||0)*100)); }
+      });
+      const parsed=parseCardText(data?.text||"");
+      setFields(f=>({...f,...parsed}));
+      setStep("confirm");
+    }catch(e){
+      showToast("Couldn't read that image — you can type the details instead","error");
+      setStep("confirm");
+    }
+  }
+
+  async function save(){
+    if(!fields.name.trim()||(!fields.email.trim()&&!fields.mobile.trim())){
+      showToast("Need a name plus an email or phone","error"); return;
+    }
+    setSaving(true);
+    try{
+      // 1) Is this already an ABAA member?
+      let match=null;
+      if(fields.email.trim()){
+        const {data}=await supabase.from("profiles").select("id,name,role,avatar_url,email,location,verified")
+          .ilike("email",fields.email.trim()).maybeSingle();
+        if(data) match=data;
+      }
+      if(!match && fields.mobile.trim()){
+        const digits=fields.mobile.replace(/[^\d]/g,"").slice(-9);
+        if(digits.length>=8){
+          const {data}=await supabase.from("profiles").select("id,name,role,avatar_url,email,location,verified")
+            .ilike("mobile",`%${digits}%`).limit(1);
+          if(data&&data.length) match=data[0];
+        }
+      }
+
+      // 2) Save the scanned contact either way
+      const {data:saved}=await supabase.from("scanned_contacts").insert({
+        owner_id:user.id, name:fields.name.trim(), email:fields.email.trim()||null,
+        mobile:fields.mobile.trim()||null, company:fields.company.trim()||null,
+        title:fields.title.trim()||null, website:fields.website.trim()||null,
+        note:fields.note.trim()||null, matched_profile_id:match?.id||null,
+      }).select().single();
+
+      if(match){
+        setExisting(match); setStep("matched");
+      }else{
+        // 3) Not a member — send them a personal intro + invite
+        if(fields.email.trim()){
+          const origin=window.location.origin;
+          sendEmail("card_exchange", fields.email.trim(), {
+            theirName: fields.name.trim(),
+            fromName: profile?.name || "An ABAA member",
+            fromRole: profile?.role || "",
+            fromCompany: profile?.business_name || "",
+            fromEmail: profile?.email || user.email || "",
+            fromMobile: profile?.mobile || "",
+            fromWhatsapp: profile?.whatsapp || "",
+            fromLinkedin: profile?.linkedin_url || "",
+            fromWebsite: profile?.website_url || "",
+            fromPhoto: profile?.avatar_url || "",
+            cardUrl: `${origin}?card=${user.id}`,
+            bookingUrl: profile?.booking_enabled ? `${origin}?card=${user.id}` : "",
+            joinUrl: `${origin}?ref=${user.id}`,
+            unsubUrl: `${origin}?unsub=${encodeURIComponent(fields.email.trim())}`,
+          });
+        }
+        setStep("done");
+      }
+      onSaved&&onSaved();
+    }catch(e){ showToast(e.message||"Could not save contact","error"); }
+    setSaving(false);
+  }
+
+  const inputCls="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none";
+  const inputStyle={background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"};
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      className="fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
+        className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl flex flex-col"
+        style={{background:"#0f1320",border:`1px solid ${BORDER}`,maxHeight:"90vh"}}>
+
+        <div className="p-5 pb-3 flex items-center justify-between" style={{borderBottom:`1px solid ${BORDER}`}}>
+          <div>
+            <div className="text-white font-bold">📷 Scan a business card</div>
+            <div className="text-white/40 text-xs">Save the contact and invite them to connect</div>
+          </div>
+          <button onClick={onClose} className="text-white/40 text-xl px-2">✕</button>
+        </div>
+
+        <div className="p-5 overflow-y-auto flex-1">
+          {step==="capture"&&(
+            <div className="text-center py-6">
+              <div className="text-5xl mb-4 abaa-float">💳</div>
+              <div className="text-white/70 text-sm mb-6">Take a photo of their business card — we'll pull out the details automatically.</div>
+              <label className="abaa-gradient block w-full py-3.5 rounded-2xl text-white font-bold cursor-pointer mb-3">
+                📷 Take photo
+                <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
+                  onChange={e=>handleImage(e.target.files?.[0])}/>
+              </label>
+              <label className="block w-full py-3 rounded-2xl text-white/70 text-sm font-semibold cursor-pointer"
+                style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
+                🖼 Choose from gallery
+                <input type="file" accept="image/*" className="hidden" onChange={e=>handleImage(e.target.files?.[0])}/>
+              </label>
+              <button onClick={()=>setStep("confirm")} className="text-white/35 text-xs mt-4">or enter details manually</button>
+            </div>
+          )}
+
+          {step==="reading"&&(
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4 abaa-float">🔍</div>
+              <div className="text-white font-semibold text-sm mb-3">Reading the card…</div>
+              <div className="h-1.5 rounded-full mx-auto max-w-xs" style={{background:"rgba(255,255,255,0.08)"}}>
+                <div className="h-full rounded-full transition-all" style={{background:"linear-gradient(90deg,#7c6fe0,#a78bfa)",width:`${progress}%`}}/>
+              </div>
+              <div className="text-white/35 text-xs mt-2">{progress}%</div>
+            </div>
+          )}
+
+          {step==="confirm"&&(
+            <div className="space-y-3">
+              <div className="text-white/50 text-xs">Check the details before saving — edit anything that's wrong.</div>
+              <input value={fields.name} onChange={e=>setFields(f=>({...f,name:e.target.value}))} placeholder="Full name *" className={inputCls} style={inputStyle}/>
+              <input value={fields.email} onChange={e=>setFields(f=>({...f,email:e.target.value}))} placeholder="Email" type="email" className={inputCls} style={inputStyle}/>
+              <input value={fields.mobile} onChange={e=>setFields(f=>({...f,mobile:e.target.value}))} placeholder="Mobile" className={inputCls} style={inputStyle}/>
+              <input value={fields.title} onChange={e=>setFields(f=>({...f,title:e.target.value}))} placeholder="Job title" className={inputCls} style={inputStyle}/>
+              <input value={fields.company} onChange={e=>setFields(f=>({...f,company:e.target.value}))} placeholder="Company" className={inputCls} style={inputStyle}/>
+              <input value={fields.website} onChange={e=>setFields(f=>({...f,website:e.target.value}))} placeholder="Website" className={inputCls} style={inputStyle}/>
+              <textarea value={fields.note} onChange={e=>setFields(f=>({...f,note:e.target.value}))} rows={2} placeholder="Where did you meet? (optional)"
+                className={inputCls+" resize-none"} style={inputStyle}/>
+              <div className="text-white/25 text-[11px]">* Name plus an email or phone required</div>
+              <button onClick={save} disabled={saving} className="abaa-gradient w-full py-3.5 rounded-2xl text-white font-bold" style={{opacity:saving?0.6:1}}>
+                {saving?"Saving…":"Save contact"}
+              </button>
+              <button onClick={()=>setStep("capture")} className="w-full text-center text-white/35 text-xs py-1">↺ Scan a different card</button>
+            </div>
+          )}
+
+          {step==="matched"&&existing&&(
+            <div className="text-center py-6">
+              <div className="text-4xl mb-3">🎉</div>
+              <div className="text-white font-bold text-lg mb-1">They're already on ABAA!</div>
+              <div className="text-white/45 text-sm mb-5">Contact saved. You can connect with them right away.</div>
+              <div className="rounded-2xl p-4 mb-5" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
+                <div className="flex items-center gap-3">
+                  <Av name={existing.name} url={existing.avatar_url} color={pal(existing.id)} size="md" ring/>
+                  <div className="text-left min-w-0">
+                    <div className="text-white font-semibold text-sm flex items-center gap-1.5">{existing.name}<VerifiedBadge verified={existing.verified}/></div>
+                    <div className="text-white/45 text-xs truncate">{existing.role||existing.location||""}</div>
+                  </div>
+                </div>
+              </div>
+              <a href={`${window.location.origin}?connect=${existing.id}`}
+                className="abaa-gradient block w-full py-3.5 rounded-2xl text-white font-bold mb-2">🤝 View profile & connect</a>
+              <button onClick={onClose} className="w-full py-2.5 text-white/45 text-sm">Done</button>
+            </div>
+          )}
+
+          {step==="done"&&(
+            <div className="text-center py-6">
+              <div className="text-4xl mb-3">✅</div>
+              <div className="text-white font-bold text-lg mb-1">Contact saved</div>
+              <div className="text-white/45 text-sm mb-5">
+                {fields.email
+                  ? <>We've emailed <strong className="text-white/70">{fields.name}</strong> your contact details, a link to book a catch-up, and an invitation to join ABAA.</>
+                  : <>Saved to your contacts. Add an email next time and we'll send them your details automatically.</>}
+              </div>
+              <button onClick={()=>{ setFields({name:"",email:"",mobile:"",company:"",title:"",website:"",note:""}); setStep("capture"); }}
+                className="abaa-gradient w-full py-3 rounded-2xl text-white font-bold mb-2">📷 Scan another card</button>
+              <button onClick={onClose} className="w-full py-2.5 text-white/45 text-sm">Done</button>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ═══ MY SCANNED CONTACTS ═══
+function ScannedContacts({ user, refreshKey }){
+  const [items,setItems]=useState([]);
+  const [open,setOpen]=useState(false);
+  useEffect(()=>{
+    if(!user) return;
+    supabase.from("scanned_contacts").select("*, matched:profiles!scanned_contacts_matched_profile_id_fkey(id,name,avatar_url,role,verified)")
+      .eq("owner_id",user.id).order("created_at",{ascending:false})
+      .then(({data})=>setItems(data||[])).catch(()=>setItems([]));
+  },[user,refreshKey]);
+
+  function saveVcf(c){
+    const lines=["BEGIN:VCARD","VERSION:3.0",`FN:${c.name||""}`];
+    if(c.name){ const p=String(c.name).split(" "); lines.push(`N:${p.slice(1).join(" ")};${p[0]};;;`); }
+    if(c.company) lines.push(`ORG:${c.company}`);
+    if(c.title) lines.push(`TITLE:${c.title}`);
+    if(c.mobile) lines.push(`TEL;TYPE=CELL:${c.mobile}`);
+    if(c.email) lines.push(`EMAIL;TYPE=WORK:${c.email}`);
+    if(c.website) lines.push(`URL:${c.website}`);
+    if(c.note) lines.push(`NOTE:${c.note}`);
+    lines.push("END:VCARD");
+    const blob=new Blob([lines.join("\r\n")],{type:"text/vcard"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob); a.download=`${(c.name||"contact").replace(/\s+/g,"-")}.vcf`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+
+  if(items.length===0) return null;
+  return (
+    <Card className="p-4">
+      <button onClick={()=>setOpen(o=>!o)} className="w-full flex items-center justify-between">
+        <div className="text-left">
+          <div className="text-white font-semibold text-sm">💳 Scanned contacts ({items.length})</div>
+          <div className="text-white/40 text-xs">Cards you've scanned</div>
+        </div>
+        <span className="text-white/40">{open?"▾":"▸"}</span>
+      </button>
+      {open&&(
+        <div className="space-y-2 mt-3">
+          {items.map(c=>(
+            <div key={c.id} className="p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-white text-sm font-semibold truncate flex items-center gap-1.5">
+                    {c.name}
+                    {c.matched&&<span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{background:"rgba(52,211,153,0.15)",color:"#34d399"}}>ABAA member</span>}
+                  </div>
+                  <div className="text-white/45 text-xs truncate">{[c.title,c.company].filter(Boolean).join(" · ")}</div>
+                  <div className="text-white/35 text-[11px] truncate">{[c.email,c.mobile].filter(Boolean).join("  ·  ")}</div>
+                  {c.note&&<div className="text-white/30 text-[11px] italic mt-0.5">"{c.note}"</div>}
+                </div>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button onClick={()=>saveVcf(c)} className="flex-1 py-1.5 rounded-xl text-[11px] font-semibold text-white/70"
+                  style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>💾 Save to phone</button>
+                {c.matched&&(
+                  <a href={`${window.location.origin}?connect=${c.matched.id}`}
+                    className="flex-1 py-1.5 rounded-xl text-[11px] font-semibold text-center text-white"
+                    style={{background:"rgba(124,111,224,0.2)",border:"1px solid rgba(167,139,250,0.35)"}}>🤝 Connect</a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ═══ CONNECTION LABELS (how you met) ═══
 const MEET_LABELS = [
   {id:"event",  emoji:"🎟️", name:"Met at an event"},
@@ -4095,6 +4382,8 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [qrLogoUploading, setQrLogoUploading] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanRefresh, setScanRefresh] = useState(0);
   const [autoSaved, setAutoSaved] = useState(false);
   const avatarInputRef = useRef();
 
@@ -4197,6 +4486,22 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
           </div>
         </div>
       </Card>
+
+      {/* Scan a business card */}
+      {user&&(
+        <button onClick={()=>setShowScanner(true)}
+          className="abaa-gradient w-full py-3.5 rounded-2xl text-white font-bold flex items-center justify-center gap-2">
+          📷 Scan a Business Card
+        </button>
+      )}
+      <AnimatePresence>
+        {showScanner&&(
+          <CardScanner key="cardscan" user={user} profile={profile} showToast={showToast}
+            onClose={()=>setShowScanner(false)}
+            onSaved={()=>setScanRefresh(k=>k+1)}/>
+        )}
+      </AnimatePresence>
+      <ScannedContacts user={user} refreshKey={scanRefresh}/>
 
       {/* QR preview — scan-ready from the Profile tab */}
       {user&&(
@@ -5442,6 +5747,37 @@ function PublicEventPage({ eventId }){
   );
 }
 
+// ═══ UNSUBSCRIBE (card exchange invites) ═══
+function UnsubscribePage({ email }){
+  const [state,setState]=useState("working"); // working | done | error
+  useEffect(()=>{
+    (async()=>{
+      try{
+        await supabase.from("email_optouts").insert({ email: String(email).toLowerCase() });
+        setState("done");
+      }catch(e){
+        // Already opted out is still success from the person's point of view
+        setState(String(e?.message||"").includes("duplicate") ? "done" : "error");
+      }
+    })();
+  },[email]);
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center" style={{background:BG}}>
+      <div className="text-5xl mb-4">{state==="done"?"✅":state==="error"?"⚠️":"⏳"}</div>
+      <div className="text-white font-bold text-xl mb-2">
+        {state==="done"?"You've been unsubscribed":state==="error"?"Something went wrong":"Processing…"}
+      </div>
+      <div className="text-white/45 text-sm mb-6 max-w-sm">
+        {state==="done"
+          ? <>We won't email <strong className="text-white/70">{email}</strong> again from ABAA Community.</>
+          : state==="error" ? "Please try the link again, or reply to the email and we'll remove you manually."
+          : "One moment."}
+      </div>
+      <a href={window.location.origin} className="text-purple-300 text-sm font-semibold">Visit ABAA Community →</a>
+    </div>
+  );
+}
+
 export default function App() {
   // ── Public Digital Business Card route — no login required ──
   const cardId = new URLSearchParams(window.location.search).get("card");
@@ -5452,6 +5788,10 @@ export default function App() {
     const cId = new URLSearchParams(window.location.search).get("connect");
     if(cId && !window.__abaaConnectHandled){ window.__abaaConnectHandled = cId; }
   } catch(e){}
+
+  // ── Unsubscribe route ──
+  const unsubEmail = (()=>{ try { return new URLSearchParams(window.location.search).get("unsub"); } catch(e){ return null; } })();
+  if(unsubEmail) return <UnsubscribePage email={unsubEmail}/>;
 
   // ── Public Event page — no login required ──
   const publicEventId = new URLSearchParams(window.location.search).get("event");
