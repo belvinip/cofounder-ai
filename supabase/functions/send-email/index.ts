@@ -157,8 +157,15 @@ function buildEmail(type: string, data: any): { subject: string; html: string } 
            </div>
            <a href="${data.cardUrl}" style="color:#a78bfa;font-size:14px;">&#128190; Open their digital card to save these details to your phone</a>
            ${data.bookingUrl ? `<br><br>Want to continue the conversation? <a href="${data.bookingUrl}" style="color:#a78bfa;">Book a catch-up at a time that suits you.</a>` : ""}
-           <br><br><div style="border-top:1px solid #232a42;padding-top:14px;color:#8b93ab;font-size:13px;">
-             ABAA Community is a network for Australian founders &mdash; matching co-founders, sharing projects and running events. Join free to build your own digital card and connect with ${data.fromName || "them"}.
+           <br><br><div style="border-top:1px solid #232a42;padding-top:14px;">
+             <div style="color:#fff;font-size:14px;font-weight:600;margin-bottom:8px;">What is ABAA Community?</div>
+             <div style="color:#8b93ab;font-size:13px;line-height:1.6;">
+               A free network for Australian founders. On ABAA you can:
+               <br>&#8226; Find and match with co-founders and business partners
+               <br>&#8226; List your own project and find people to join it
+               <br>&#8226; Discover and register for founder events near you
+               <br>&#8226; Get your own free digital business card like this one, with QR sharing and a built-in booking page
+             </div>
            </div>`,
           { label: "\u2728 Join ABAA Community \u2014 Free", url: data.joinUrl || APP_URL },
           data.unsubUrl) };
