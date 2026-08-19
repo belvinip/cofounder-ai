@@ -4374,7 +4374,7 @@ function CardContacts({ user }) {
   );
 }
 
-function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
+function ProfileTab({ user, profile, setProfile, showToast, isApproved, isAdmin, onGoTab }) {
   const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:"",brand_color:"#7c6fe0",cover_url:"",qr_logo_url:"",links:{},businesses:[],booking_enabled:false,booking_duration:30,booking_hours:null});
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
@@ -4486,6 +4486,20 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
           </div>
         </div>
       </Card>
+
+      {/* Admin access — moved here so the tab bar is identical for everyone */}
+      {isAdmin&&(
+        <button onClick={()=>onGoTab&&onGoTab("manage")}
+          className="abaa-lift w-full flex items-center gap-3 p-4 rounded-3xl text-left"
+          style={{background:"linear-gradient(135deg,rgba(245,158,11,0.14),rgba(245,158,11,0.04))",border:"1px solid rgba(245,158,11,0.3)"}}>
+          <span className="text-xl">⭐</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-white font-bold text-sm">Admin Controls</div>
+            <div className="text-white/45 text-xs">Approve members, review reports, view as user</div>
+          </div>
+          <span className="text-white/30 text-xl">›</span>
+        </button>
+      )}
 
       {/* Scan a business card */}
       {user&&(
@@ -4862,7 +4876,7 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved }) {
 // ════════════════════════════════════════════════════════
 // MANAGE TAB (Admin only)
 // ════════════════════════════════════════════════════════
-function ManageTab({ showToast, onViewAs }) {
+function ManageTab({ showToast, onViewAs, onBack }) {
   const [users,setUsers]=useState([]); const [loading,setLoading]=useState(true); const [filter,setFilter]=useState("all");
   async function load(){ const{data,error}=await supabase.from("profiles").select("*").order("created_at",{ascending:false}); if(!error) setUsers(data||[]); setLoading(false); }
   useEffect(()=>{ load(); },[]);
@@ -4882,7 +4896,13 @@ function ManageTab({ showToast, onViewAs }) {
   const filtered=filter==="pending"?users.filter(u=>!u.is_approved):filter==="approved"?users.filter(u=>u.is_approved):users;
   return (
     <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-14}} className="space-y-5">
-      <div><h1 className="text-3xl font-bold" style={{background:"linear-gradient(135deg,#7cb9e8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Manage Users</h1><p className="text-white/45 text-sm mt-1">Approve accounts and manage access</p></div>
+      <div>
+        {onBack&&(
+          <button onClick={onBack} className="text-purple-300 text-xs font-semibold mb-2">← Back to Profile</button>
+        )}
+        <h1 className="text-3xl font-bold" style={{background:"linear-gradient(135deg,#7cb9e8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Manage Users</h1>
+        <p className="text-white/45 text-sm mt-1">Approve accounts and manage access</p>
+      </div>
       <div className="grid grid-cols-3 gap-3">{[["All",users.length],["Pending",users.filter(u=>!u.is_approved).length],["Active",users.filter(u=>u.is_approved).length]].map(([l,c])=>(<Card key={l} className="p-4 text-center"><div className="text-2xl font-bold text-white">{c}</div><div className="text-white/35 text-xs mt-0.5">{l}</div></Card>))}</div>
       <div className="flex gap-2">{["all","pending","approved"].map(f=>(<button key={f} onClick={()=>setFilter(f)} className="flex-1 py-3 rounded-2xl text-sm font-semibold capitalize transition-all" style={filter===f?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:CARD_BG,border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.45)"}}>{f}</button>))}</div>
       {loading&&<div className="text-center text-white/30 py-10 text-sm">Loading…</div>}
@@ -5814,6 +5834,7 @@ export default function App() {
   const [notif,setNotif]=useState({partner:0,project:0,events:0,messages:0,bookings:0});
   const [showNotifs,setShowNotifs]=useState(false);
   const [showSearch,setShowSearch]=useState(false);
+  const [globalScan,setGlobalScan]=useState(false);
   const [checklistDismissed,setChecklistDismissed]=useState(false);
   const processedUserRef = useRef(null);
   const [toast,setToast]=useState(null);
@@ -5991,9 +6012,6 @@ export default function App() {
     { id:"profile", label:"Profile", icon:(active)=>(
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active?2.5:2}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
     ), auth:true},
-    ...(isAdmin?[{ id:"manage", label:"Admin", icon:(active)=>(
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active?2.5:2}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-    ), auth:true}]:[]),
   ];
 
   function goTab(id,auth){ if(auth&&!user){setShowLogin(true);return;} setTab(id); }
@@ -6091,14 +6109,20 @@ export default function App() {
           ):tab==="matching"?<MatchTab key="m" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs} connectId={connectId} onGoTab={setTab}/>
           :tab==="events"?<EventsTab key="e" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
           :tab==="projects"?<ProjectsTab key="pr" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
-          :tab==="profile"?<ProfileTab key="p" user={user} profile={effectiveProfile} setProfile={setEffectiveProfile} showToast={showToast} isApproved={isApproved}/>
-          :tab==="manage"&&realIsAdmin&&!viewAs?<ManageTab key="a" showToast={showToast} onViewAs={(u)=>{setViewAs(u);setTab("profile");showToast(`Now viewing as ${u.name||u.email}`);}}/>
+          :tab==="profile"?<ProfileTab key="p" user={user} profile={effectiveProfile} setProfile={setEffectiveProfile} showToast={showToast} isApproved={isApproved} isAdmin={realIsAdmin&&!viewAs} onGoTab={setTab}/>
+          :tab==="manage"&&realIsAdmin&&!viewAs?<ManageTab key="a" showToast={showToast} onBack={()=>setTab("profile")} onViewAs={(u)=>{setViewAs(u);setTab("profile");showToast(`Now viewing as ${u.name||u.email}`);}}/>
           :null}
         </AnimatePresence>
       </main>
 
       {/* Mobile Bottom Nav — matching reference image */}
       <OfflineBanner/>
+      <AnimatePresence>
+        {globalScan&&user&&(
+          <CardScanner key="globalscan" user={user} profile={effectiveProfile} showToast={showToast}
+            onClose={()=>setGlobalScan(false)} onSaved={()=>{}}/>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {showSearch&&<GlobalSearch key="gsearch" user={user} onClose={()=>setShowSearch(false)}
           onOpenProfile={(p)=>{ setTab("matching"); }} onGoTab={(t)=>setTab(t)}/>}
@@ -6114,13 +6138,47 @@ export default function App() {
                 opacity:modalOpen?0:1,
                 pointerEvents:modalOpen?"none":"auto",
                 transition:"transform .25s cubic-bezier(.2,.8,.2,1), opacity .2s ease"}}>
-        <div className="flex items-center justify-around px-2 py-3">
-          {NAV.map(n=>{
+        <div className="flex items-end justify-around px-1 py-2 relative">
+          {NAV.slice(0,2).map(n=>{
             const active=tab===n.id;
             const badge=badgeFor(n.id);
             return (
               <button key={n.id} onClick={()=>goTab(n.id,n.auth)}
-                className="flex flex-col items-center gap-1 px-4 py-1 rounded-2xl transition-all min-w-[56px] relative">
+                className="flex flex-col items-center gap-1 px-2 py-1 rounded-2xl transition-all min-w-[54px] relative">
+                <motion.span className="relative" animate={{scale:active?1.15:1,y:active?-1:0}} transition={{type:"spring",stiffness:400,damping:20}} style={{color:active?"#a78bfa":"rgba(255,255,255,0.35)",display:"inline-block"}}>
+                  {n.icon(active)}
+                  {badge>0&&<span className="abaa-pulse absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{background:"#ef4444"}}>{badge>9?"9+":badge}</span>}
+                </motion.span>
+                <span className="text-[10px] font-semibold" style={{color:active?"#a78bfa":"rgba(255,255,255,0.35)"}}>{n.label}</span>
+              </button>
+            );
+          })}
+
+          {/* ═══ CENTER SCAN BUTTON — the hero action ═══ */}
+          <button onClick={()=>{ if(!user){setShowLogin(true);return;} setGlobalScan(true); }}
+            className="flex flex-col items-center relative" style={{minWidth:"64px"}} aria-label="Scan a business card">
+            <motion.div
+              whileTap={{scale:0.9}}
+              animate={{y:[-2,2,-2]}}
+              transition={{duration:3,repeat:Infinity,ease:"easeInOut"}}
+              className="abaa-gradient flex items-center justify-center rounded-full"
+              style={{width:"58px",height:"58px",marginTop:"-26px",
+                      boxShadow:"0 8px 24px rgba(124,111,224,0.55), 0 0 0 4px rgba(10,14,26,0.95)"}}>
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+                <path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+                <rect x="7" y="8" width="10" height="8" rx="1.5"/>
+              </svg>
+            </motion.div>
+            <span className="text-[10px] font-bold mt-0.5" style={{color:"#a78bfa"}}>Scan</span>
+          </button>
+
+          {NAV.slice(2).map(n=>{
+            const active=tab===n.id;
+            const badge=badgeFor(n.id);
+            return (
+              <button key={n.id} onClick={()=>goTab(n.id,n.auth)}
+                className="flex flex-col items-center gap-1 px-2 py-1 rounded-2xl transition-all min-w-[54px] relative">
                 <motion.span className="relative" animate={{scale:active?1.15:1,y:active?-1:0}} transition={{type:"spring",stiffness:400,damping:20}} style={{color:active?"#a78bfa":"rgba(255,255,255,0.35)",display:"inline-block"}}>
                   {n.icon(active)}
                   {badge>0&&<span className="abaa-pulse absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{background:"#ef4444"}}>{badge>9?"9+":badge}</span>}
