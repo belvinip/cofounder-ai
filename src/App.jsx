@@ -2721,6 +2721,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
   const [attSet, setAttSet] = useState({});
   const [pendingAtt, setPendingAtt] = useState({});
   const [myEventsOpen, setMyEventsOpen] = useState(true);
+  const [myPastOpen, setMyPastOpen] = useState(false);
   const [attCounts, setAttCounts] = useState({});
   const [pendingCounts, setPendingCounts] = useState({});
   const [waitlist, setWaitlist] = useState({});
@@ -3377,7 +3378,34 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                           </Card>
                         );
                       })}
-                      <div className="space-y-4">{myCreatedEvents.map(renderCard)}</div>
+                      {(()=>{
+                        const nowD=new Date();
+                        const upcoming=myCreatedEvents.filter(ev=>new Date(ev.event_date)>=nowD)
+                          .sort((a,b)=>new Date(a.event_date)-new Date(b.event_date));   // soonest first
+                        const past=myCreatedEvents.filter(ev=>new Date(ev.event_date)<nowD)
+                          .sort((a,b)=>new Date(b.event_date)-new Date(a.event_date));   // most recent first
+                        return (
+                          <>
+                            {upcoming.length>0
+                              ? <div className="space-y-4">{upcoming.map(renderCard)}</div>
+                              : <div className="text-white/30 text-sm text-center py-4">No upcoming events — tap "+ Create" to add one.</div>}
+
+                            {past.length>0&&(
+                              <div className="mt-5">
+                                <button onClick={()=>setMyPastOpen(o=>!o)}
+                                  className="w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-colors"
+                                  style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                                  <span className="text-white/60 text-xs font-semibold uppercase tracking-wider">
+                                    🗄 Past events ({past.length})
+                                  </span>
+                                  <span className="text-white/40 text-lg">{myPastOpen?"▾":"▸"}</span>
+                                </button>
+                                {myPastOpen&&<div className="space-y-4 mt-3">{past.map(renderCard)}</div>}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </>
                   )}
                 </div>
@@ -3515,7 +3543,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                     {user&&<EventFeedback event={selectedEvent} user={user} showToast={showToast}/>}
                   </div>
                   <div className="text-white/35 text-xs font-semibold uppercase tracking-wider mb-2">About this event</div>
-                  <p className="text-white/70 text-sm leading-relaxed">{selectedEvent.description||"No description provided."}</p>
+                  <p className="text-white/70 text-sm leading-relaxed whitespace-pre-wrap">{selectedEvent.description||"No description provided."}</p>
                 </div>
 
                 {/* Details grid */}
