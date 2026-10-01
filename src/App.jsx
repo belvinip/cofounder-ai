@@ -1216,6 +1216,8 @@ function EventFeedback({ event, user, showToast }){
   const [comment,setComment]=useState("");
   const [sent,setSent]=useState(false);
   const [existing,setExisting]=useState(null);
+  const [ocrLines,setOcrLines]=useState([]);
+  const [assignFor,setAssignFor]=useState(null); // field key currently being picked
   const [avg,setAvg]=useState(null);
   const isHost = event.creator_id===user?.id;
   useEffect(()=>{
@@ -1411,28 +1413,152 @@ function SavedSearches({ user, currentFilters, onApply, showToast }){
 }
 
 // ═══ BUSINESS CARD SCANNER (OCR → contact → invite) ═══
+// Preprocess the photo before OCR: upscale, greyscale, boost contrast, sharpen.
+// Tesseract is dramatically more accurate on clean, high-contrast, larger text.
+async function preprocessCardImage(file){
+  try{
+    const bitmap = await createImageBitmap(file);
+    // Upscale small photos — OCR needs roughly 300dpi-equivalent text height
+    const targetW = Math.min(2200, Math.max(1400, bitmap.width));
+    const scale = targetW / bitmap.width;
+    const w = Math.round(bitmap.width*scale), h = Math.round(bitmap.height*scale);
+    const c = document.createElement("canvas"); c.width=w; c.height=h;
+    const ctx = c.getContext("2d", { willReadFrequently:true });
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, w, h);
+
+    const img = ctx.getImageData(0,0,w,h);
+    const d = img.data;
+    // Greyscale + average luminance
+    let sum=0;
+    for(let i=0;i<d.length;i+=4){
+      const g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      d[i]=d[i+1]=d[i+2]=g; sum+=g;
+    }
+    const mean = sum/(d.length/4);
+    // Contrast stretch around the mean (keeps light-on-dark cards readable too)
+    const k = 1.55;
+    for(let i=0;i<d.length;i+=4){
+      let v = (d[i]-mean)*k + mean;
+      v = v<0?0:v>255?255:v;
+      d[i]=d[i+1]=d[i+2]=v;
+    }
+    ctx.putImageData(img,0,0);
+    return await new Promise(res=>c.toBlob(b=>res(b||file),"image/png"));
+  }catch(e){ return file; }
+}
+
+// ── Field detection helpers ──
+const RE_EMAIL  = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+const RE_URL    = /\b(?:https?:\/\/)?(?:www\.)?[A-Za-z0-9-]+\.(?:com\.au|net\.au|org\.au|edu\.au|gov\.au|com|net|org|io|co|ai|app|dev|au)\b(?:\/[^\s]*)?/i;
+const TITLE_WORDS = /\b(founder|co-?founder|ceo|cto|coo|cfo|cmo|director|manager|consultant|engineer|developer|designer|advisor|adviser|partner|owner|principal|agent|specialist|lead|head|president|vp|vice president|analyst|accountant|solicitor|lawyer|architect|broker|planner|coach|strategist|officer|executive|supervisor|administrator|coordinator|representative|rep|associate)\b/i;
+const COMPANY_WORDS = /\b(pty|ltd|limited|llc|inc|incorporated|group|holdings|co\.|company|studio|agency|labs|lab|solutions|services|consulting|partners|enterprises|ventures|capital|realty|property|constructions?|builders?|clinic|dental|medical|legal|finance|financial|insurance|travel|media|digital|tech|technologies|systems|industries|trading|global|international|australia)\b/i;
+const ADDR_WORDS = /\b(street|st\.?|road|rd\.?|avenue|ave\.?|drive|dr\.?|lane|ln\.?|court|ct\.?|place|pl\.?|parade|pde|boulevard|blvd|highway|hwy|suite|unit|level|floor|po box|vic|nsw|qld|wa|sa|tas|act|nt)\b/i;
+const NOISE = /\b(mobile|phone|tel|telephone|fax|email|e-?mail|web|www|cell|contact|address|office|direct|ph)\b\s*[:.]?/gi;
+
+function cleanPhone(s){
+  const digits = String(s).replace(/[^\d+]/g,"");
+  return digits.length>=8 ? digits : "";
+}
+
+// Score how likely a line is a person's name
+function nameScore(line){
+  const t = line.trim();
+  if(!t || t.length>42) return -99;
+  if(RE_EMAIL.test(t) || /\d/.test(t)) return -99;
+  if(TITLE_WORDS.test(t)) return -40;          // it's a job title, not a name
+  if(COMPANY_WORDS.test(t)) return -40;        // it's a company
+  if(ADDR_WORDS.test(t)) return -30;
+  const words = t.split(/\s+/).filter(Boolean);
+  if(words.length<2 || words.length>4) return -10;
+  let s = 20;
+  // Proper capitalisation, e.g. "Jacob Lee"
+  if(words.every(w=>/^[A-Z][a-z'’.-]+$/.test(w))) s += 35;
+  // ALL CAPS names are common on cards
+  else if(words.every(w=>/^[A-Z][A-Z'’.-]+$/.test(w))) s += 22;
+  if(words.length===2) s += 10;
+  return s;
+}
+
 function parseCardText(text){
-  const lines=String(text||"").split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  const joined=lines.join(" ");
-  // Email
-  const email=(joined.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)||[])[0]||"";
-  // Australian & international phone formats
-  const phoneRaw=(joined.match(/(\+?61[\s-]?\d[\d\s-]{7,})|(\b0[2-478][\s-]?\d{4}[\s-]?\d{4}\b)|(\b04\d{2}[\s-]?\d{3}[\s-]?\d{3}\b)/)||[])[0]||"";
-  const mobile=phoneRaw.replace(/[^\d+]/g,"");
-  // Website (ignore the email's domain)
-  let website=(joined.match(/\b(?:https?:\/\/)?(?:www\.)?[A-Za-z0-9-]+\.(?:com|com\.au|net|org|io|co|au)\b(?:\/\S*)?/i)||[])[0]||"";
-  if(email && website && email.toLowerCase().includes(website.toLowerCase().replace(/^www\./,""))) website="";
-  // Name = first line that looks like a person (2-3 words, no digits/@)
-  const nameLine=lines.find(l=>
-    /^[A-Za-z][A-Za-z.'-]*(\s+[A-Za-z][A-Za-z.'-]*){1,2}$/.test(l) &&
-    !/@|\d|www|ltd|pty|inc/i.test(l) && l.length<40
-  )||"";
-  // Title
-  const titleLine=lines.find(l=>/founder|ceo|cto|coo|cfo|director|manager|consultant|engineer|designer|advisor|partner|owner|principal|agent|specialist|lead|head of/i.test(l))||"";
-  // Company: a line with a business suffix, else a non-name non-contact line
-  const companyLine=lines.find(l=>/pty|ltd|limited|group|co\.|company|studio|agency|labs|holdings|services|solutions/i.test(l))
-    || lines.find(l=>l!==nameLine && l!==titleLine && !/@|www|\d{4}/.test(l) && l.length>2 && l.length<40) || "";
-  return { name:nameLine, email, mobile, website, title:titleLine, company:companyLine, raw:text };
+  const rawLines = String(text||"").split(/\r?\n/)
+    .map(l=>l.replace(/[|•·▪]/g," ").replace(/\s{2,}/g," ").trim())
+    .filter(l=>l.length>1);
+
+  // Any line can contain several fields; collect them, then strip what we consumed
+  const joined = rawLines.join("  ");
+
+  // 1) Email
+  const email = (joined.match(RE_EMAIL)||[])[0] || "";
+
+  // 2) Phones — collect all, prefer a mobile (04.. / +614..) for the mobile field
+  const phoneCandidates = [];
+  rawLines.forEach(l=>{
+    const stripped = l.replace(RE_EMAIL,"");
+    const matches = stripped.match(/(\+?\d[\d\s().-]{7,}\d)/g) || [];
+    matches.forEach(m=>{
+      const p = cleanPhone(m);
+      if(!p) return;
+      // ignore years / ABNs / postcodes misread as phones
+      if(p.replace(/\D/g,"").length < 8) return;
+      const isMobile = /^(\+?61\s?4|04)/.test(p.replace(/\s/g,""));
+      phoneCandidates.push({ value:p, isMobile, labelled:/mobile|cell|m[:.]/i.test(l) });
+    });
+  });
+  const mobilePick = phoneCandidates.find(p=>p.isMobile)
+    || phoneCandidates.find(p=>p.labelled)
+    || phoneCandidates[0];
+  const mobile = mobilePick ? mobilePick.value : "";
+
+  // 3) Website — must not be the email's own domain
+  let website = "";
+  const emailDomain = email.split("@")[1] || "";
+  for(const l of rawLines){
+    const noEmail = l.replace(RE_EMAIL,"");
+    const m = noEmail.match(RE_URL);
+    if(m){
+      const cand = m[0];
+      if(!emailDomain || cand.toLowerCase().replace(/^www\./,"") !== emailDomain.toLowerCase()){
+        website = cand; break;
+      }
+    }
+  }
+
+  // Lines that are purely contact data shouldn't be considered for name/title/company
+  const contactLine = (l)=>{
+    const t=l.replace(NOISE,"").trim();
+    if(!t) return true;
+    if(RE_EMAIL.test(l)) return true;
+    if(website && l.toLowerCase().includes(website.toLowerCase().slice(0,12))) return true;
+    const digits=(l.match(/\d/g)||[]).length;
+    return digits >= Math.max(5, Math.floor(l.length*0.35));
+  };
+  const textLines = rawLines.filter(l=>!contactLine(l));
+
+  // 4) Name — highest scoring line, biased toward the top of the card
+  let name="", best=-999;
+  textLines.forEach((l,i)=>{
+    const s = nameScore(l) + Math.max(0, 12 - i*3); // earlier lines slightly favoured
+    if(s>best){ best=s; name=l; }
+  });
+  if(best < 10) name = ""; // nothing convincing — leave blank rather than guess wrong
+
+  // 5) Title
+  const title = textLines.find(l=>l!==name && TITLE_WORDS.test(l) && l.length<48) || "";
+
+  // 6) Company
+  let company = textLines.find(l=>l!==name && l!==title && COMPANY_WORDS.test(l) && l.length<48) || "";
+  if(!company){
+    company = textLines.find(l=>
+      l!==name && l!==title && !ADDR_WORDS.test(l) &&
+      l.length>2 && l.length<40 && nameScore(l)<10
+    ) || "";
+  }
+
+  // 7) Address
+  const address = rawLines.find(l=>ADDR_WORDS.test(l) && !RE_EMAIL.test(l) && l.length<80) || "";
+
+  return { name, email, mobile, website, title, company, address, lines: rawLines, raw:text };
 }
 
 function CardScanner({ user, profile, showToast, onClose, onSaved }){
@@ -1448,11 +1574,17 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
     setStep("reading"); setProgress(0);
     try{
       const Tesseract=(await import("tesseract.js")).default;
-      const { data }=await Tesseract.recognize(file,"eng",{
+      const clean = await preprocessCardImage(file);
+      const { data }=await Tesseract.recognize(clean,"eng",{
         logger:m=>{ if(m.status==="recognizing text") setProgress(Math.round((m.progress||0)*100)); }
       });
       const parsed=parseCardText(data?.text||"");
-      setFields(f=>({...f,...parsed}));
+      setOcrLines(parsed.lines||[]);
+      setFields(f=>({...f,
+        name:parsed.name, email:parsed.email, mobile:parsed.mobile,
+        website:parsed.website, title:parsed.title, company:parsed.company,
+        note:f.note,
+      }));
       setStep("confirm");
     }catch(e){
       showToast("Couldn't read that image — you can type the details instead","error");
@@ -1571,15 +1703,63 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
 
           {step==="confirm"&&(
             <div className="space-y-3">
-              <div className="text-white/50 text-xs">Check the details before saving — edit anything that's wrong.</div>
-              <input value={fields.name} onChange={e=>setFields(f=>({...f,name:e.target.value}))} placeholder="Full name *" className={inputCls} style={inputStyle}/>
-              <input value={fields.email} onChange={e=>setFields(f=>({...f,email:e.target.value}))} placeholder="Email" type="email" className={inputCls} style={inputStyle}/>
-              <input value={fields.mobile} onChange={e=>setFields(f=>({...f,mobile:e.target.value}))} placeholder="Mobile" className={inputCls} style={inputStyle}/>
-              <input value={fields.title} onChange={e=>setFields(f=>({...f,title:e.target.value}))} placeholder="Job title" className={inputCls} style={inputStyle}/>
-              <input value={fields.company} onChange={e=>setFields(f=>({...f,company:e.target.value}))} placeholder="Company" className={inputCls} style={inputStyle}/>
-              <input value={fields.website} onChange={e=>setFields(f=>({...f,website:e.target.value}))} placeholder="Website" className={inputCls} style={inputStyle}/>
+              <div className="text-white/50 text-xs">
+                Check the details below. Tap <span className="text-purple-300 font-semibold">⇄ Pick</span> next to any field to choose the right text straight off the card.
+              </div>
+
+              {[
+                {k:"name",    label:"Full name *", ph:"Full name"},
+                {k:"email",   label:"Email",       ph:"Email"},
+                {k:"mobile",  label:"Mobile",      ph:"Mobile"},
+                {k:"title",   label:"Job title",   ph:"Job title"},
+                {k:"company", label:"Company",     ph:"Company"},
+                {k:"website", label:"Website",     ph:"Website"},
+              ].map(f=>(
+                <div key={f.k}>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-white/40 text-[11px] uppercase tracking-wider">{f.label}</label>
+                    {ocrLines.length>0&&(
+                      <button onClick={()=>setAssignFor(assignFor===f.k?null:f.k)}
+                        className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                        style={assignFor===f.k
+                          ? {background:"rgba(124,111,224,0.3)",color:"#c4b5fd",border:"1px solid #7c6fe0"}
+                          : {background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.45)",border:`1px solid ${BORDER}`}}>
+                        ⇄ Pick
+                      </button>
+                    )}
+                  </div>
+                  <input value={fields[f.k]} onChange={e=>setFields(x=>({...x,[f.k]:e.target.value}))}
+                    placeholder={f.ph} className={inputCls} style={inputStyle}/>
+                  {assignFor===f.k&&(
+                    <div className="mt-2 p-2 rounded-2xl space-y-1 max-h-44 overflow-y-auto"
+                      style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+                      <div className="text-white/35 text-[10px] px-1 pb-1">Tap the correct text from the card:</div>
+                      {ocrLines.map((l,i)=>(
+                        <button key={i} onClick={()=>{ setFields(x=>({...x,[f.k]:l})); setAssignFor(null); }}
+                          className="w-full text-left px-3 py-2 rounded-xl text-xs text-white/80 hover:bg-white/10 transition-colors"
+                          style={{background:"rgba(255,255,255,0.04)"}}>
+                          {l}
+                        </button>
+                      ))}
+                      <button onClick={()=>{ setFields(x=>({...x,[f.k]:""})); setAssignFor(null); }}
+                        className="w-full text-left px-3 py-2 rounded-xl text-xs text-red-400/70">✕ Clear this field</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+
               <textarea value={fields.note} onChange={e=>setFields(f=>({...f,note:e.target.value}))} rows={2} placeholder="Where did you meet? (optional)"
                 className={inputCls+" resize-none"} style={inputStyle}/>
+
+              {ocrLines.length>0&&(
+                <details className="rounded-2xl p-3" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+                  <summary className="text-white/45 text-[11px] cursor-pointer">📄 All text read from the card ({ocrLines.length} lines)</summary>
+                  <div className="mt-2 space-y-0.5">
+                    {ocrLines.map((l,i)=><div key={i} className="text-white/55 text-[11px]">{l}</div>)}
+                  </div>
+                </details>
+              )}
+
               <div className="text-white/25 text-[11px]">* Name plus an email or phone required</div>
               <button onClick={save} disabled={saving} className="abaa-gradient w-full py-3.5 rounded-2xl text-white font-bold" style={{opacity:saving?0.6:1}}>
                 {saving?"Saving…":"Save contact"}
