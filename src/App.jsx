@@ -1418,33 +1418,63 @@ function SavedSearches({ user, currentFilters, onApply, showToast }){
 async function preprocessCardImage(file){
   try{
     const bitmap = await createImageBitmap(file);
-    // Upscale small photos — OCR needs roughly 300dpi-equivalent text height
-    const targetW = Math.min(2200, Math.max(1400, bitmap.width));
+
+    // Upscale so lowercase letters are ~30px tall — Tesseract's sweet spot.
+    const targetW = Math.min(2600, Math.max(1800, bitmap.width * 2));
     const scale = targetW / bitmap.width;
-    const w = Math.round(bitmap.width*scale), h = Math.round(bitmap.height*scale);
-    const c = document.createElement("canvas"); c.width=w; c.height=h;
-    const ctx = c.getContext("2d", { willReadFrequently:true });
+    const w = Math.round(bitmap.width * scale), h = Math.round(bitmap.height * scale);
+
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(bitmap, 0, 0, w, h);
 
-    const img = ctx.getImageData(0,0,w,h);
+    const img = ctx.getImageData(0, 0, w, h);
     const d = img.data;
-    // Greyscale + average luminance
-    let sum=0;
-    for(let i=0;i<d.length;i+=4){
-      const g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-      d[i]=d[i+1]=d[i+2]=g; sum+=g;
+    const n = w * h;
+
+    // 1) Greyscale into a flat array + build a histogram
+    const grey = new Uint8ClampedArray(n);
+    const hist = new Uint32Array(256);
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+      const g = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) | 0;
+      grey[p] = g; hist[g]++;
     }
-    const mean = sum/(d.length/4);
-    // Contrast stretch around the mean (keeps light-on-dark cards readable too)
-    const k = 1.55;
-    for(let i=0;i<d.length;i+=4){
-      let v = (d[i]-mean)*k + mean;
-      v = v<0?0:v>255?255:v;
-      d[i]=d[i+1]=d[i+2]=v;
+
+    // 2) Otsu's method — finds the optimal black/white split automatically.
+    //    Far more reliable than a fixed contrast boost across different cards.
+    let sumAll = 0;
+    for (let t = 0; t < 256; t++) sumAll += t * hist[t];
+    let sumB = 0, wB = 0, best = 0, threshold = 128;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t]; if (!wB) continue;
+      const wF = n - wB; if (!wF) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB, mF = (sumAll - sumB) / wF;
+      const between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > best) { best = between; threshold = t; }
     }
-    ctx.putImageData(img,0,0);
-    return await new Promise(res=>c.toBlob(b=>res(b||file),"image/png"));
+
+    // 3) Detect light-on-dark cards and invert them — Tesseract expects dark text
+    let darkCount = 0;
+    for (let p = 0; p < n; p++) if (grey[p] < threshold) darkCount++;
+    const invert = darkCount > n * 0.55; // mostly dark background
+
+    // 4) Binarize with a small soft margin so anti-aliased edges survive
+    const margin = 18;
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      const g = grey[p];
+      let v;
+      if (g < threshold - margin) v = 0;
+      else if (g > threshold + margin) v = 255;
+      else v = g < threshold ? 60 : 200;       // keep soft edges readable
+      if (invert) v = 255 - v;
+      d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+
+    return await new Promise(res => c.toBlob(b => res(b || file), "image/png"));
   }catch(e){ return file; }
 }
 
@@ -1575,10 +1605,52 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
     try{
       const Tesseract=(await import("tesseract.js")).default;
       const clean = await preprocessCardImage(file);
-      const { data }=await Tesseract.recognize(clean,"eng",{
-        logger:m=>{ if(m.status==="recognizing text") setProgress(Math.round((m.progress||0)*100)); }
+
+      // Business card layouts vary hugely, and no single page-segmentation mode
+      // handles them all. Run a few and keep whichever produces the most
+      // usable text (real words + a detected email/phone).
+      const worker = await Tesseract.createWorker("eng", 1, {
+        logger:m=>{ if(m.status==="recognizing text") setProgress(Math.round((m.progress||0)*92)); }
       });
-      const parsed=parseCardText(data?.text||"");
+
+      function scoreText(t){
+        if(!t) return -1;
+        const lines=t.split(/\r?\n/).map(s=>s.trim()).filter(s=>s.length>1);
+        if(lines.length===0) return -1;
+        let s=0;
+        // Reward real alphabetic words
+        const words=t.match(/[A-Za-z]{3,}/g)||[];
+        s += words.length*2;
+        // Strongly reward finding contact details — the whole point of a card
+        if(RE_EMAIL.test(t)) s += 40;
+        if(/(\+?\d[\d\s().-]{7,}\d)/.test(t)) s += 25;
+        // Penalise OCR garbage (runs of symbols / lone characters)
+        const junk=(t.match(/[^A-Za-z0-9@.\s+()\-&',:\/]/g)||[]).length;
+        s -= junk*1.5;
+        const lonely=lines.filter(l=>l.replace(/\s/g,"").length<=2).length;
+        s -= lonely*3;
+        return s;
+      }
+
+      let bestText="", bestScore=-2;
+      // PSM 4 = single column of varying sizes, 6 = uniform block, 11 = sparse text
+      for(const psm of ["4","6","11"]){
+        try{
+          await worker.setParameters({
+            tessedit_pageseg_mode: psm,
+            preserve_interword_spaces: "1",
+            user_defined_dpi: "300",
+          });
+          const { data } = await worker.recognize(clean);
+          const t = data?.text || "";
+          const sc = scoreText(t);
+          if(sc > bestScore){ bestScore = sc; bestText = t; }
+        }catch(e){}
+      }
+      await worker.terminate();
+      setProgress(100);
+
+      const parsed=parseCardText(bestText);
       setOcrLines(parsed.lines||[]);
       setFields(f=>({...f,
         name:parsed.name, email:parsed.email, mobile:parsed.mobile,
@@ -1587,7 +1659,8 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
       }));
       setStep("confirm");
     }catch(e){
-      showToast("Couldn't read that image — you can type the details instead","error");
+      showToast("Couldn't read that image — enter the details manually below","error");
+      setOcrLines([]);
       setStep("confirm");
     }
   }
@@ -1675,7 +1748,16 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
           {step==="capture"&&(
             <div className="text-center py-6">
               <div className="text-5xl mb-4 abaa-float">💳</div>
-              <div className="text-white/70 text-sm mb-6">Take a photo of their business card — we'll pull out the details automatically.</div>
+              <div className="text-white/70 text-sm mb-4">Take a photo of their business card — we'll pull out the details automatically.</div>
+              <div className="rounded-2xl p-3 mb-5 text-left" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                <div className="text-white/50 text-[11px] font-semibold uppercase tracking-wider mb-1.5">For the best results</div>
+                <div className="text-white/45 text-[11px] leading-relaxed">
+                  • Fill the frame with the card, straight on<br/>
+                  • Good even light, avoid shadows and glare<br/>
+                  • Hold steady until the photo is sharp<br/>
+                  • Flat surface works better than holding it
+                </div>
+              </div>
               <label className="abaa-gradient block w-full py-3.5 rounded-2xl text-white font-bold cursor-pointer mb-3">
                 📷 Take photo
                 <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
