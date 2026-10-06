@@ -1415,6 +1415,34 @@ function SavedSearches({ user, currentFilters, onApply, showToast }){
 // ═══ BUSINESS CARD SCANNER (OCR → contact → invite) ═══
 // Preprocess the photo before OCR: upscale, greyscale, boost contrast, sharpen.
 // Tesseract is dramatically more accurate on clean, high-contrast, larger text.
+// Server-side OCR via the `ocr` Edge Function (OCR.space engine).
+// Far more accurate than in-browser Tesseract on real business cards.
+// Returns the recognised text, or null if unavailable so we can fall back.
+async function ocrViaServer(blob){
+  try{
+    const dataUrl = await new Promise((res,rej)=>{
+      const r=new FileReader();
+      r.onload=()=>res(r.result);
+      r.onerror=()=>rej(new Error("read failed"));
+      r.readAsDataURL(blob);
+    });
+    const { data:{ session } } = await supabase.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/ocr`,{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "Authorization":`Bearer ${session?.access_token||SUPABASE_ANON}`,
+        "apikey":SUPABASE_ANON,
+      },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    if(!res.ok) return null;
+    const j = await res.json();
+    if(j?.ok && String(j.text||"").trim().length>0) return String(j.text);
+    return null;
+  }catch(e){ return null; }
+}
+
 async function preprocessCardImage(file){
   try{
     const bitmap = await createImageBitmap(file);
@@ -1603,8 +1631,26 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
     if(!file) return;
     setStep("reading"); setProgress(0);
     try{
-      const Tesseract=(await import("tesseract.js")).default;
       const clean = await preprocessCardImage(file);
+
+      // ── 1) Try the accurate server-side engine first ──
+      setProgress(15);
+      const serverText = await ocrViaServer(file); // send the ORIGINAL photo: the service does its own cleanup
+      if(serverText){
+        setProgress(100);
+        const parsed=parseCardText(serverText);
+        setOcrLines(parsed.lines||[]);
+        setFields(f=>({...f,
+          name:parsed.name, email:parsed.email, mobile:parsed.mobile,
+          website:parsed.website, title:parsed.title, company:parsed.company,
+          note:f.note,
+        }));
+        setStep("confirm");
+        return;
+      }
+
+      // ── 2) Fall back to in-browser OCR ──
+      const Tesseract=(await import("tesseract.js")).default;
 
       // Business card layouts vary hugely, and no single page-segmentation mode
       // handles them all. Run a few and keep whichever produces the most
