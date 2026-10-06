@@ -1218,6 +1218,8 @@ function EventFeedback({ event, user, showToast }){
   const [existing,setExisting]=useState(null);
   const [ocrLines,setOcrLines]=useState([]);
   const [assignFor,setAssignFor]=useState(null); // field key currently being picked
+  const [ocrNote,setOcrNote]=useState("");
+  const [ocrSource,setOcrSource]=useState("");
   const [avg,setAvg]=useState(null);
   const isHost = event.creator_id===user?.id;
   useEffect(()=>{
@@ -1436,11 +1438,13 @@ async function ocrViaServer(blob){
       },
       body: JSON.stringify({ image: dataUrl }),
     });
-    if(!res.ok) return null;
+    if(res.status===404) return { text:null, error:"not_configured" };
+    if(!res.ok) return { text:null, error:`http_${res.status}` };
     const j = await res.json();
-    if(j?.ok && String(j.text||"").trim().length>0) return String(j.text);
-    return null;
-  }catch(e){ return null; }
+    if(j?.ok && String(j.text||"").trim()) return { text:String(j.text), error:"" };
+    if(String(j?.error||"").includes("not configured")) return { text:null, error:"not_configured" };
+    return { text:null, error:String(j?.error||"empty") };
+  }catch(e){ return { text:null, error:String(e?.message||e) }; }
 }
 
 async function preprocessCardImage(file){
@@ -1629,86 +1633,66 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
 
   async function handleImage(file){
     if(!file) return;
-    setStep("reading"); setProgress(0);
-    try{
-      const clean = await preprocessCardImage(file);
+    setStep("reading"); setProgress(0); setOcrNote("");
 
-      // ── 1) Try the accurate server-side engine first ──
-      setProgress(15);
-      const serverText = await ocrViaServer(file); // send the ORIGINAL photo: the service does its own cleanup
-      if(serverText){
-        setProgress(100);
-        const parsed=parseCardText(serverText);
-        setOcrLines(parsed.lines||[]);
-        setFields(f=>({...f,
-          name:parsed.name, email:parsed.email, mobile:parsed.mobile,
-          website:parsed.website, title:parsed.title, company:parsed.company,
-          note:f.note,
-        }));
-        setStep("confirm");
-        return;
-      }
-
-      // ── 2) Fall back to in-browser OCR ──
-      const Tesseract=(await import("tesseract.js")).default;
-
-      // Business card layouts vary hugely, and no single page-segmentation mode
-      // handles them all. Run a few and keep whichever produces the most
-      // usable text (real words + a detected email/phone).
-      const worker = await Tesseract.createWorker("eng", 1, {
-        logger:m=>{ if(m.status==="recognizing text") setProgress(Math.round((m.progress||0)*92)); }
-      });
-
-      function scoreText(t){
-        if(!t) return -1;
-        const lines=t.split(/\r?\n/).map(s=>s.trim()).filter(s=>s.length>1);
-        if(lines.length===0) return -1;
-        let s=0;
-        // Reward real alphabetic words
-        const words=t.match(/[A-Za-z]{3,}/g)||[];
-        s += words.length*2;
-        // Strongly reward finding contact details — the whole point of a card
-        if(RE_EMAIL.test(t)) s += 40;
-        if(/(\+?\d[\d\s().-]{7,}\d)/.test(t)) s += 25;
-        // Penalise OCR garbage (runs of symbols / lone characters)
-        const junk=(t.match(/[^A-Za-z0-9@.\s+()\-&',:\/]/g)||[]).length;
-        s -= junk*1.5;
-        const lonely=lines.filter(l=>l.replace(/\s/g,"").length<=2).length;
-        s -= lonely*3;
-        return s;
-      }
-
-      let bestText="", bestScore=-2;
-      // PSM 4 = single column of varying sizes, 6 = uniform block, 11 = sparse text
-      for(const psm of ["4","6","11"]){
-        try{
-          await worker.setParameters({
-            tessedit_pageseg_mode: psm,
-            preserve_interword_spaces: "1",
-            user_defined_dpi: "300",
-          });
-          const { data } = await worker.recognize(clean);
-          const t = data?.text || "";
-          const sc = scoreText(t);
-          if(sc > bestScore){ bestScore = sc; bestText = t; }
-        }catch(e){}
-      }
-      await worker.terminate();
-      setProgress(100);
-
-      const parsed=parseCardText(bestText);
+    function applyText(text, source){
+      const parsed = parseCardText(text);
       setOcrLines(parsed.lines||[]);
       setFields(f=>({...f,
         name:parsed.name, email:parsed.email, mobile:parsed.mobile,
         website:parsed.website, title:parsed.title, company:parsed.company,
         note:f.note,
       }));
-      setStep("confirm");
-    }catch(e){
-      showToast("Couldn't read that image — enter the details manually below","error");
-      setOcrLines([]);
+      setOcrSource(source);
       setStep("confirm");
     }
+
+    // ── 1) Accurate server-side engine (OCR.space via the `ocr` function) ──
+    setProgress(12);
+    let serverText = null, serverProblem = "";
+    try{
+      const r = await ocrViaServer(file);
+      serverText = r?.text || null;
+      serverProblem = r?.error || "";
+    }catch(e){ serverProblem = String(e?.message||e); }
+
+    if(serverText && serverText.trim().length>2){
+      setProgress(100);
+      applyText(serverText, "server");
+      return;
+    }
+
+    // ── 2) Fall back to in-browser OCR ──
+    setProgress(20);
+    let localText = "";
+    try{
+      const clean = await preprocessCardImage(file);
+      const Tesseract = (await import("tesseract.js")).default;
+      // Simple, robust single call — the multi-pass worker API was the crash source
+      const { data } = await Tesseract.recognize(clean, "eng", {
+        logger: m => { if(m.status==="recognizing text") setProgress(20+Math.round((m.progress||0)*78)); },
+      });
+      localText = data?.text || "";
+    }catch(e){
+      localText = "";
+    }
+    setProgress(100);
+
+    if(localText.trim().length>2){
+      applyText(localText, "local");
+      setOcrNote(serverProblem==="not_configured"
+        ? "Using basic in-browser reading. Set up the OCR key for much better accuracy."
+        : "Using basic in-browser reading — results may need correcting.");
+      return;
+    }
+
+    // ── 3) Nothing worked — let them type it in, and say why ──
+    setOcrLines([]);
+    setOcrSource("none");
+    setOcrNote(serverProblem==="not_configured"
+      ? "Automatic reading isn't set up yet (OCR key missing), and basic reading failed. Please enter the details below."
+      : "Couldn't read this image. Try a sharper, well-lit photo — or enter the details below.");
+    setStep("confirm");
   }
 
   async function save(){
@@ -1831,6 +1815,15 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
 
           {step==="confirm"&&(
             <div className="space-y-3">
+              {ocrNote&&(
+                <div className="rounded-2xl p-3 text-[11px] leading-relaxed"
+                  style={{background:"rgba(245,158,11,0.10)",border:"1px solid rgba(245,158,11,0.3)",color:"#fbbf24"}}>
+                  ⚠️ {ocrNote}
+                </div>
+              )}
+              {ocrSource==="server"&&(
+                <div className="text-emerald-400/80 text-[11px]">✓ Read with high-accuracy scanning</div>
+              )}
               <div className="text-white/50 text-xs">
                 Check the details below. Tap <span className="text-purple-300 font-semibold">⇄ Pick</span> next to any field to choose the right text straight off the card.
               </div>
