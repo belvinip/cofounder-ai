@@ -1220,6 +1220,8 @@ function EventFeedback({ event, user, showToast }){
   const [assignFor,setAssignFor]=useState(null); // field key currently being picked
   const [ocrNote,setOcrNote]=useState("");
   const [ocrSource,setOcrSource]=useState("");
+  const [statusMsg,setStatusMsg]=useState("");
+  const skipRef = useRef(null);
   const [avg,setAvg]=useState(null);
   const isHost = event.creator_id===user?.id;
   useEffect(()=>{
@@ -1629,6 +1631,10 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
   async function handleImage(file){
     if(!file) return;
     setStep("reading"); setProgress(0); setOcrNote(""); setOcrSource("");
+    setStatusMsg("Starting…");
+
+    // Yield to the browser so the UI can actually repaint between heavy steps.
+    const breathe = ()=>new Promise(r=>setTimeout(r,60));
 
     let finished = false;
     const finish = (text, source, note)=>{
@@ -1644,39 +1650,58 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
           note:f.note,
         }));
       }
-      setOcrSource(source);
-      setOcrNote(note||"");
-      setStep("confirm");
+      setOcrSource(source); setOcrNote(note||""); setStep("confirm");
     };
-
-    // Hard watchdog — never leave the user on the spinner
-    const watchdog = setTimeout(()=>{
-      finish("", "none", "Reading took too long on this device. Please enter the details below.");
-    }, 40000);
+    skipRef.current = ()=>finish("", "none", "Skipped automatic reading — please enter the details below.");
 
     try{
-      // Prepare the image ONCE (light resize only — heavy filtering froze phones)
-      setProgress(10);
-      const img = await prepareCardImage(file);
+      setStatusMsg(`Photo received (${Math.round(file.size/1024)} KB)`);
+      setProgress(8);
+      await breathe();
+
+      // ── Only touch the canvas if we actually have to ──
+      let img = file;
+      if(file.size > 850*1024){
+        setStatusMsg("Resizing photo…");
+        setProgress(15);
+        await breathe();
+        try{
+          img = await prepareCardImage(file);
+          setStatusMsg(`Resized to ${Math.round((img.size||file.size)/1024)} KB`);
+        }catch(e){
+          setStatusMsg("Resize failed — sending original");
+          img = file;
+        }
+        await breathe();
+      } else {
+        setStatusMsg("Photo is already a good size");
+      }
       if(finished) return;
 
-      // 1) Accurate server-side engine
-      setProgress(25);
-      let creep = 25;
+      // ── 1) High-accuracy server OCR ──
+      setStatusMsg("Reading with high-accuracy scanner…");
+      setProgress(30);
+      await breathe();
+
+      let creep = 30;
       const creepTimer = setInterval(()=>{ creep = Math.min(80, creep+3); setProgress(creep); }, 500);
       let serverRes = { text:null, error:"" };
-      try{ serverRes = await ocrViaServer(img); }catch(e){ serverRes = { text:null, error:String(e?.message||e) }; }
+      try{ serverRes = await ocrViaServer(img); }
+      catch(e){ serverRes = { text:null, error:String(e?.message||e) }; }
       clearInterval(creepTimer);
       if(finished) return;
 
       if(serverRes.text && serverRes.text.trim().length>2){
-        clearTimeout(watchdog);
+        setStatusMsg("Done");
         finish(serverRes.text, "server", "");
         return;
       }
 
-      // 2) Fallback: in-browser OCR on the SAME prepared image
+      // ── 2) Fallback: in-browser OCR ──
+      setStatusMsg(`High-accuracy unavailable (${serverRes.error||"unknown"}) — trying basic reading…`);
       setProgress(45);
+      await breathe();
+
       let localText = "";
       try{
         const Tesseract = (await import("tesseract.js")).default;
@@ -1686,12 +1711,11 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
         localText = data?.text || "";
       }catch(e){ localText = ""; }
       if(finished) return;
-      clearTimeout(watchdog);
 
       if(localText.trim().length>2){
         finish(localText, "local",
           serverRes.error==="not_configured"
-            ? "Using basic in-browser reading — set up the OCR key for much better accuracy."
+            ? "Using basic in-browser reading — the OCR key isn't set up, so accuracy is limited."
             : `Using basic in-browser reading (high-accuracy unavailable: ${serverRes.error||"unknown"}).`);
         return;
       }
@@ -1701,8 +1725,7 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
           ? "High-accuracy reading isn't set up (OCR key missing) and basic reading failed. Please enter the details below."
           : `Couldn't read this image (${serverRes.error||"unreadable"}). Please enter the details below.`);
     }catch(e){
-      clearTimeout(watchdog);
-      finish("", "none", `Something went wrong reading the image (${String(e?.message||e)}). Please enter the details below.`);
+      finish("", "none", `Error while reading (${String(e?.message||e)}). Please enter the details below.`);
     }
   }
 
@@ -1821,9 +1844,14 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
                 <div className="h-full rounded-full transition-all" style={{background:"linear-gradient(90deg,#7c6fe0,#a78bfa)",width:`${progress}%`}}/>
               </div>
               <div className="text-white/35 text-xs mt-2">{progress}%</div>
-              <button onClick={()=>{ setOcrLines([]); setOcrSource("none"); setOcrNote("Skipped automatic reading — enter the details below."); setStep("confirm"); }}
-                className="mt-5 text-white/45 text-xs underline">
-                Taking too long? Enter details manually
+              {statusMsg&&<div className="text-purple-300/80 text-[11px] mt-2 px-4">{statusMsg}</div>}
+              <button onClick={()=>{
+                  if(skipRef.current) skipRef.current();
+                  else { setOcrLines([]); setOcrSource("none"); setOcrNote("Skipped — please enter the details below."); setStep("confirm"); }
+                }}
+                className="mt-5 px-5 py-2.5 rounded-2xl text-white text-xs font-semibold"
+                style={{background:"rgba(255,255,255,0.08)",border:`1px solid ${BORDER}`}}>
+                Skip — enter details manually
               </button>
             </div>
           )}
