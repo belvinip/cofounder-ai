@@ -1424,82 +1424,67 @@ function SavedSearches({ user, currentFilters, onApply, showToast }){
 // OCR.space's free tier caps uploads at 1MB, and base64 adds ~33% on top —
 // so a raw 4MB photo would never arrive. We resize and compress until it fits
 // while keeping text comfortably readable.
-// Decode an image file without ever hanging.
-// iPhone HEIC photos can stall createImageBitmap indefinitely in Safari, so we
-// race it against a timeout and fall back to a plain <img> decode.
-function withTimeout(promise, ms, label){
-  return Promise.race([
-    promise,
-    new Promise((_,rej)=>setTimeout(()=>rej(new Error(label||"timeout")), ms)),
-  ]);
+// Decode an image without hanging (iPhone HEIC can stall createImageBitmap).
+function withTimeout(promise, ms){
+  return Promise.race([promise, new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")), ms))]);
 }
-
 async function decodeImage(file){
-  // 1) Fast path
-  try{
-    return await withTimeout(createImageBitmap(file), 8000, "bitmap_timeout");
-  }catch(e){}
-  // 2) Fallback: object URL into an <img>, which Safari decodes reliably
+  try{ return await withTimeout(createImageBitmap(file), 8000); }catch(e){}
   try{
     const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.decoding = "async";
-    const loaded = new Promise((res,rej)=>{
-      img.onload = ()=>res(img);
-      img.onerror = ()=>rej(new Error("img_decode_failed"));
-    });
+    const img = new Image(); img.decoding="async";
+    const loaded = new Promise((res,rej)=>{ img.onload=()=>res(img); img.onerror=()=>rej(new Error("decode")); });
     img.src = url;
-    const el = await withTimeout(loaded, 10000, "img_timeout");
+    const el = await withTimeout(loaded, 10000);
     setTimeout(()=>URL.revokeObjectURL(url), 5000);
-    return el; // drawImage accepts HTMLImageElement too
-  }catch(e){
-    return null;
-  }
+    return el;
+  }catch(e){ return null; }
 }
 
-async function compressForOcr(file){
+// ONE lightweight resize, used for both the server OCR and the local fallback.
+// Deliberately no pixel-level filtering: that work froze the browser on phones,
+// and the OCR engines do their own (far better) cleanup anyway.
+async function prepareCardImage(file){
   try{
     const bitmap = await decodeImage(file);
     if(!bitmap) return file;
-    // 1600px wide is ample for card text and keeps the file small
-    const maxW = 1600;
-    const scale = Math.min(1, maxW / bitmap.width);
-    const w = Math.round(bitmap.width*scale), h = Math.round(bitmap.height*scale);
+    const srcW = bitmap.width || bitmap.naturalWidth;
+    const srcH = bitmap.height || bitmap.naturalHeight;
+    if(!srcW || !srcH) return file;
+
+    const maxW = 1600;                       // plenty for card text, small payload
+    const scale = Math.min(1, maxW / srcW);
+    const w = Math.round(srcW*scale), h = Math.round(srcH*scale);
+
     const c = document.createElement("canvas"); c.width=w; c.height=h;
     const ctx = c.getContext("2d");
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(bitmap, 0, 0, w, h);
+    if(bitmap.close) { try{ bitmap.close(); }catch(e){} }
 
-    // Step the quality down until comfortably under the limit (~700KB target)
-    for(const q of [0.75, 0.6, 0.45, 0.35]){
+    for(const q of [0.8, 0.65, 0.5]){
       const blob = await new Promise(r=>c.toBlob(r,"image/jpeg",q));
       if(blob && blob.size < 700*1024) return blob;
     }
-    return await new Promise(r=>c.toBlob(r,"image/jpeg",0.3));
+    return await new Promise(r=>c.toBlob(r,"image/jpeg",0.4)) || file;
   }catch(e){ return file; }
 }
 
-async function ocrViaServer(blob){
+async function ocrViaServer(imageBlob){
   try{
-    const small = await compressForOcr(blob);
-
     const dataUrl = await new Promise((res,rej)=>{
       const r=new FileReader();
       r.onload=()=>res(r.result);
       r.onerror=()=>rej(new Error("read failed"));
-      r.readAsDataURL(small);
+      r.readAsDataURL(imageBlob);
     });
-
-    // Never hang: give up after 30s and fall back to local reading
     const ctrl = new AbortController();
-    const timer = setTimeout(()=>ctrl.abort(), 30000);
-
+    const timer = setTimeout(()=>ctrl.abort(), 25000);
     let res;
     try{
       const { data:{ session } } = await supabase.auth.getSession();
       res = await fetch(`${SUPABASE_URL}/functions/v1/ocr`,{
-        method:"POST",
-        signal: ctrl.signal,
+        method:"POST", signal: ctrl.signal,
         headers:{
           "Content-Type":"application/json",
           "Authorization":`Bearer ${session?.access_token||SUPABASE_ANON}`,
@@ -1507,9 +1492,7 @@ async function ocrViaServer(blob){
         },
         body: JSON.stringify({ image: dataUrl }),
       });
-    } finally {
-      clearTimeout(timer);
-    }
+    } finally { clearTimeout(timer); }
 
     if(res.status===404) return { text:null, error:"not_configured" };
     if(!res.ok) return { text:null, error:`http_${res.status}` };
@@ -1518,73 +1501,8 @@ async function ocrViaServer(blob){
     if(String(j?.error||"").includes("not configured")) return { text:null, error:"not_configured" };
     return { text:null, error:String(j?.error||"empty") };
   }catch(e){
-    const msg = String(e?.name==="AbortError" ? "timeout" : (e?.message||e));
-    return { text:null, error: msg };
+    return { text:null, error: e?.name==="AbortError" ? "timeout" : String(e?.message||e) };
   }
-}
-
-async function preprocessCardImage(file){
-  try{
-    const bitmap = await decodeImage(file);
-    if(!bitmap) return file;
-
-    // Upscale so lowercase letters are ~30px tall — Tesseract's sweet spot.
-    const targetW = Math.min(2600, Math.max(1800, bitmap.width * 2));
-    const scale = targetW / bitmap.width;
-    const w = Math.round(bitmap.width * scale), h = Math.round(bitmap.height * scale);
-
-    const c = document.createElement("canvas"); c.width = w; c.height = h;
-    const ctx = c.getContext("2d", { willReadFrequently: true });
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(bitmap, 0, 0, w, h);
-
-    const img = ctx.getImageData(0, 0, w, h);
-    const d = img.data;
-    const n = w * h;
-
-    // 1) Greyscale into a flat array + build a histogram
-    const grey = new Uint8ClampedArray(n);
-    const hist = new Uint32Array(256);
-    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
-      const g = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) | 0;
-      grey[p] = g; hist[g]++;
-    }
-
-    // 2) Otsu's method — finds the optimal black/white split automatically.
-    //    Far more reliable than a fixed contrast boost across different cards.
-    let sumAll = 0;
-    for (let t = 0; t < 256; t++) sumAll += t * hist[t];
-    let sumB = 0, wB = 0, best = 0, threshold = 128;
-    for (let t = 0; t < 256; t++) {
-      wB += hist[t]; if (!wB) continue;
-      const wF = n - wB; if (!wF) break;
-      sumB += t * hist[t];
-      const mB = sumB / wB, mF = (sumAll - sumB) / wF;
-      const between = wB * wF * (mB - mF) * (mB - mF);
-      if (between > best) { best = between; threshold = t; }
-    }
-
-    // 3) Detect light-on-dark cards and invert them — Tesseract expects dark text
-    let darkCount = 0;
-    for (let p = 0; p < n; p++) if (grey[p] < threshold) darkCount++;
-    const invert = darkCount > n * 0.55; // mostly dark background
-
-    // 4) Binarize with a small soft margin so anti-aliased edges survive
-    const margin = 18;
-    for (let p = 0, i = 0; p < n; p++, i += 4) {
-      const g = grey[p];
-      let v;
-      if (g < threshold - margin) v = 0;
-      else if (g > threshold + margin) v = 255;
-      else v = g < threshold ? 60 : 200;       // keep soft edges readable
-      if (invert) v = 255 - v;
-      d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-
-    return await new Promise(res => c.toBlob(b => res(b || file), "image/png"));
-  }catch(e){ return file; }
 }
 
 // ── Field detection helpers ──
@@ -1710,94 +1628,82 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
 
   async function handleImage(file){
     if(!file) return;
-    setStep("reading"); setProgress(0); setOcrNote("");
+    setStep("reading"); setProgress(0); setOcrNote(""); setOcrSource("");
 
-    // Watchdog: if anything stalls, drop the user into the manual form rather
-    // than leaving them staring at a spinner.
     let finished = false;
-    const watchdog = setTimeout(()=>{
+    const finish = (text, source, note)=>{
       if(finished) return;
       finished = true;
-      setOcrLines([]);
-      setOcrSource("none");
-      setOcrNote("Reading took too long on this device. Please enter the details below — or try a smaller, sharper photo.");
       setProgress(100);
-      setStep("confirm");
-    }, 45000);
-    const done = ()=>{ finished = true; clearTimeout(watchdog); };
-
-    function applyText(text, source){
-      const parsed = parseCardText(text);
+      const parsed = parseCardText(text||"");
       setOcrLines(parsed.lines||[]);
-      setFields(f=>({...f,
-        name:parsed.name, email:parsed.email, mobile:parsed.mobile,
-        website:parsed.website, title:parsed.title, company:parsed.company,
-        note:f.note,
-      }));
+      if(text){
+        setFields(f=>({...f,
+          name:parsed.name, email:parsed.email, mobile:parsed.mobile,
+          website:parsed.website, title:parsed.title, company:parsed.company,
+          note:f.note,
+        }));
+      }
       setOcrSource(source);
+      setOcrNote(note||"");
       setStep("confirm");
-    }
+    };
 
-    // ── 1) Accurate server-side engine (OCR.space via the `ocr` function) ──
-    // Creep the bar forward while we wait so it never looks frozen.
-    setProgress(8);
-    let creep = 8;
-    const creepTimer = setInterval(()=>{
-      creep = Math.min(85, creep + 3);
-      setProgress(creep);
-    }, 400);
+    // Hard watchdog — never leave the user on the spinner
+    const watchdog = setTimeout(()=>{
+      finish("", "none", "Reading took too long on this device. Please enter the details below.");
+    }, 40000);
 
-    let serverText = null, serverProblem = "";
     try{
-      const r = await ocrViaServer(file);
-      serverText = r?.text || null;
-      serverProblem = r?.error || "";
-    }catch(e){ serverProblem = String(e?.message||e); }
-    clearInterval(creepTimer);
+      // Prepare the image ONCE (light resize only — heavy filtering froze phones)
+      setProgress(10);
+      const img = await prepareCardImage(file);
+      if(finished) return;
 
-    if(finished) return;
-    if(serverText && serverText.trim().length>2){
-      done();
-      setProgress(100);
-      applyText(serverText, "server");
-      return;
-    }
+      // 1) Accurate server-side engine
+      setProgress(25);
+      let creep = 25;
+      const creepTimer = setInterval(()=>{ creep = Math.min(80, creep+3); setProgress(creep); }, 500);
+      let serverRes = { text:null, error:"" };
+      try{ serverRes = await ocrViaServer(img); }catch(e){ serverRes = { text:null, error:String(e?.message||e) }; }
+      clearInterval(creepTimer);
+      if(finished) return;
 
-    // ── 2) Fall back to in-browser OCR ──
-    setProgress(20);
-    let localText = "";
-    try{
-      const clean = await preprocessCardImage(file);
-      const Tesseract = (await import("tesseract.js")).default;
-      // Simple, robust single call — the multi-pass worker API was the crash source
-      const { data } = await Tesseract.recognize(clean, "eng", {
-        logger: m => { if(m.status==="recognizing text") setProgress(20+Math.round((m.progress||0)*78)); },
-      });
-      localText = data?.text || "";
+      if(serverRes.text && serverRes.text.trim().length>2){
+        clearTimeout(watchdog);
+        finish(serverRes.text, "server", "");
+        return;
+      }
+
+      // 2) Fallback: in-browser OCR on the SAME prepared image
+      setProgress(45);
+      let localText = "";
+      try{
+        const Tesseract = (await import("tesseract.js")).default;
+        const { data } = await Tesseract.recognize(img, "eng", {
+          logger: m => { if(m.status==="recognizing text") setProgress(45+Math.round((m.progress||0)*50)); },
+        });
+        localText = data?.text || "";
+      }catch(e){ localText = ""; }
+      if(finished) return;
+      clearTimeout(watchdog);
+
+      if(localText.trim().length>2){
+        finish(localText, "local",
+          serverRes.error==="not_configured"
+            ? "Using basic in-browser reading — set up the OCR key for much better accuracy."
+            : `Using basic in-browser reading (high-accuracy unavailable: ${serverRes.error||"unknown"}).`);
+        return;
+      }
+
+      finish("", "none",
+        serverRes.error==="not_configured"
+          ? "High-accuracy reading isn't set up (OCR key missing) and basic reading failed. Please enter the details below."
+          : `Couldn't read this image (${serverRes.error||"unreadable"}). Please enter the details below.`);
     }catch(e){
-      localText = "";
+      clearTimeout(watchdog);
+      finish("", "none", `Something went wrong reading the image (${String(e?.message||e)}). Please enter the details below.`);
     }
-    setProgress(100);
-
-    if(finished) return;
-    if(localText.trim().length>2){
-      done();
-      applyText(localText, "local");
-      setOcrNote(serverProblem==="not_configured"
-        ? "Using basic in-browser reading. Set up the OCR key for much better accuracy."
-        : "Using basic in-browser reading — results may need correcting.");
-      return;
-    }
-
-    // ── 3) Nothing worked — let them type it in, and say why ──
-    if(finished) return;
-    done();
-    setOcrLines([]);
-    setOcrSource("none");
-    setOcrNote(serverProblem==="not_configured"
-      ? "Automatic reading isn't set up yet (OCR key missing), and basic reading failed. Please enter the details below."
-      : "Couldn't read this image. Try a sharper, well-lit photo — or enter the details below.");
-    setStep("confirm");
   }
 
   async function save(){
