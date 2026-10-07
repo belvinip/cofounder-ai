@@ -1420,31 +1420,73 @@ function SavedSearches({ user, currentFilters, onApply, showToast }){
 // Server-side OCR via the `ocr` Edge Function (OCR.space engine).
 // Far more accurate than in-browser Tesseract on real business cards.
 // Returns the recognised text, or null if unavailable so we can fall back.
+// Shrink a phone photo down for the OCR service.
+// OCR.space's free tier caps uploads at 1MB, and base64 adds ~33% on top —
+// so a raw 4MB photo would never arrive. We resize and compress until it fits
+// while keeping text comfortably readable.
+async function compressForOcr(file){
+  try{
+    const bitmap = await createImageBitmap(file);
+    // 1600px wide is ample for card text and keeps the file small
+    const maxW = 1600;
+    const scale = Math.min(1, maxW / bitmap.width);
+    const w = Math.round(bitmap.width*scale), h = Math.round(bitmap.height*scale);
+    const c = document.createElement("canvas"); c.width=w; c.height=h;
+    const ctx = c.getContext("2d");
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, w, h);
+
+    // Step the quality down until comfortably under the limit (~700KB target)
+    for(const q of [0.75, 0.6, 0.45, 0.35]){
+      const blob = await new Promise(r=>c.toBlob(r,"image/jpeg",q));
+      if(blob && blob.size < 700*1024) return blob;
+    }
+    return await new Promise(r=>c.toBlob(r,"image/jpeg",0.3));
+  }catch(e){ return file; }
+}
+
 async function ocrViaServer(blob){
   try{
+    const small = await compressForOcr(blob);
+
     const dataUrl = await new Promise((res,rej)=>{
       const r=new FileReader();
       r.onload=()=>res(r.result);
       r.onerror=()=>rej(new Error("read failed"));
-      r.readAsDataURL(blob);
+      r.readAsDataURL(small);
     });
-    const { data:{ session } } = await supabase.auth.getSession();
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/ocr`,{
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "Authorization":`Bearer ${session?.access_token||SUPABASE_ANON}`,
-        "apikey":SUPABASE_ANON,
-      },
-      body: JSON.stringify({ image: dataUrl }),
-    });
+
+    // Never hang: give up after 30s and fall back to local reading
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), 30000);
+
+    let res;
+    try{
+      const { data:{ session } } = await supabase.auth.getSession();
+      res = await fetch(`${SUPABASE_URL}/functions/v1/ocr`,{
+        method:"POST",
+        signal: ctrl.signal,
+        headers:{
+          "Content-Type":"application/json",
+          "Authorization":`Bearer ${session?.access_token||SUPABASE_ANON}`,
+          "apikey":SUPABASE_ANON,
+        },
+        body: JSON.stringify({ image: dataUrl }),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
     if(res.status===404) return { text:null, error:"not_configured" };
     if(!res.ok) return { text:null, error:`http_${res.status}` };
     const j = await res.json();
     if(j?.ok && String(j.text||"").trim()) return { text:String(j.text), error:"" };
     if(String(j?.error||"").includes("not configured")) return { text:null, error:"not_configured" };
     return { text:null, error:String(j?.error||"empty") };
-  }catch(e){ return { text:null, error:String(e?.message||e) }; }
+  }catch(e){
+    const msg = String(e?.name==="AbortError" ? "timeout" : (e?.message||e));
+    return { text:null, error: msg };
+  }
 }
 
 async function preprocessCardImage(file){
@@ -1648,13 +1690,21 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
     }
 
     // ── 1) Accurate server-side engine (OCR.space via the `ocr` function) ──
-    setProgress(12);
+    // Creep the bar forward while we wait so it never looks frozen.
+    setProgress(8);
+    let creep = 8;
+    const creepTimer = setInterval(()=>{
+      creep = Math.min(85, creep + 3);
+      setProgress(creep);
+    }, 400);
+
     let serverText = null, serverProblem = "";
     try{
       const r = await ocrViaServer(file);
       serverText = r?.text || null;
       serverProblem = r?.error || "";
     }catch(e){ serverProblem = String(e?.message||e); }
+    clearInterval(creepTimer);
 
     if(serverText && serverText.trim().length>2){
       setProgress(100);
