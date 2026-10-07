@@ -1424,9 +1424,43 @@ function SavedSearches({ user, currentFilters, onApply, showToast }){
 // OCR.space's free tier caps uploads at 1MB, and base64 adds ~33% on top —
 // so a raw 4MB photo would never arrive. We resize and compress until it fits
 // while keeping text comfortably readable.
+// Decode an image file without ever hanging.
+// iPhone HEIC photos can stall createImageBitmap indefinitely in Safari, so we
+// race it against a timeout and fall back to a plain <img> decode.
+function withTimeout(promise, ms, label){
+  return Promise.race([
+    promise,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error(label||"timeout")), ms)),
+  ]);
+}
+
+async function decodeImage(file){
+  // 1) Fast path
+  try{
+    return await withTimeout(createImageBitmap(file), 8000, "bitmap_timeout");
+  }catch(e){}
+  // 2) Fallback: object URL into an <img>, which Safari decodes reliably
+  try{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.decoding = "async";
+    const loaded = new Promise((res,rej)=>{
+      img.onload = ()=>res(img);
+      img.onerror = ()=>rej(new Error("img_decode_failed"));
+    });
+    img.src = url;
+    const el = await withTimeout(loaded, 10000, "img_timeout");
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    return el; // drawImage accepts HTMLImageElement too
+  }catch(e){
+    return null;
+  }
+}
+
 async function compressForOcr(file){
   try{
-    const bitmap = await createImageBitmap(file);
+    const bitmap = await decodeImage(file);
+    if(!bitmap) return file;
     // 1600px wide is ample for card text and keeps the file small
     const maxW = 1600;
     const scale = Math.min(1, maxW / bitmap.width);
@@ -1491,7 +1525,8 @@ async function ocrViaServer(blob){
 
 async function preprocessCardImage(file){
   try{
-    const bitmap = await createImageBitmap(file);
+    const bitmap = await decodeImage(file);
+    if(!bitmap) return file;
 
     // Upscale so lowercase letters are ~30px tall — Tesseract's sweet spot.
     const targetW = Math.min(2600, Math.max(1800, bitmap.width * 2));
@@ -1677,6 +1712,20 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
     if(!file) return;
     setStep("reading"); setProgress(0); setOcrNote("");
 
+    // Watchdog: if anything stalls, drop the user into the manual form rather
+    // than leaving them staring at a spinner.
+    let finished = false;
+    const watchdog = setTimeout(()=>{
+      if(finished) return;
+      finished = true;
+      setOcrLines([]);
+      setOcrSource("none");
+      setOcrNote("Reading took too long on this device. Please enter the details below — or try a smaller, sharper photo.");
+      setProgress(100);
+      setStep("confirm");
+    }, 45000);
+    const done = ()=>{ finished = true; clearTimeout(watchdog); };
+
     function applyText(text, source){
       const parsed = parseCardText(text);
       setOcrLines(parsed.lines||[]);
@@ -1706,7 +1755,9 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
     }catch(e){ serverProblem = String(e?.message||e); }
     clearInterval(creepTimer);
 
+    if(finished) return;
     if(serverText && serverText.trim().length>2){
+      done();
       setProgress(100);
       applyText(serverText, "server");
       return;
@@ -1728,7 +1779,9 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
     }
     setProgress(100);
 
+    if(finished) return;
     if(localText.trim().length>2){
+      done();
       applyText(localText, "local");
       setOcrNote(serverProblem==="not_configured"
         ? "Using basic in-browser reading. Set up the OCR key for much better accuracy."
@@ -1737,6 +1790,8 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
     }
 
     // ── 3) Nothing worked — let them type it in, and say why ──
+    if(finished) return;
+    done();
     setOcrLines([]);
     setOcrSource("none");
     setOcrNote(serverProblem==="not_configured"
@@ -1860,6 +1915,10 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
                 <div className="h-full rounded-full transition-all" style={{background:"linear-gradient(90deg,#7c6fe0,#a78bfa)",width:`${progress}%`}}/>
               </div>
               <div className="text-white/35 text-xs mt-2">{progress}%</div>
+              <button onClick={()=>{ setOcrLines([]); setOcrSource("none"); setOcrNote("Skipped automatic reading — enter the details below."); setStep("confirm"); }}
+                className="mt-5 text-white/45 text-xs underline">
+                Taking too long? Enter details manually
+              </button>
             </div>
           )}
 
