@@ -885,9 +885,9 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
                 <OutlineBtn onClick={()=>{onRequest&&onRequest(p,"declined");onClose();}} className="flex-1">✕ Decline</OutlineBtn>
               </div>
             </div>
-          ) : (
+          ) : onRequest ? (
             <PrimaryBtn onClick={()=>{onRequest(p);onClose();}} className="w-full">🤝 Send Partnership Request</PrimaryBtn>
-          )}
+          ) : null}
 
           {/* View digital business card — available to connected members */}
           {isAccepted&&!isDemo&&(
@@ -1216,8 +1216,6 @@ function EventFeedback({ event, user, showToast }){
   const [comment,setComment]=useState("");
   const [sent,setSent]=useState(false);
   const [existing,setExisting]=useState(null);
-  const [ocrLines,setOcrLines]=useState([]);
-  const [assignFor,setAssignFor]=useState(null); // field key currently being picked
   const [avg,setAvg]=useState(null);
   const isHost = event.creator_id===user?.id;
   useEffect(()=>{
@@ -1452,6 +1450,7 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
   const [fields,setFields]=useState({name:"",email:"",mobile:"",company:"",title:"",website:"",note:""});
   const [existing,setExisting]=useState(null);
   const [saving,setSaving]=useState(false);
+  const [pickFor,setPickFor]=useState(null); // field key whose "Pick" list is open
   const fileRef=useRef();
 
   async function handleImage(file){
@@ -1533,6 +1532,34 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
 
   const inputCls="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none";
   const inputStyle={background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"};
+  // Lines the card reader found — used by the "Pick" buttons on the confirm screen
+  const ocrLines=String(fields.raw||"").split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const fieldRow=(key,placeholder,type)=>(
+    <div key={key}>
+      <div className="flex gap-2">
+        <input value={fields[key]} onChange={e=>setFields(f=>({...f,[key]:e.target.value}))} placeholder={placeholder} type={type||"text"}
+          className="flex-1 min-w-0 rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none" style={inputStyle}/>
+        {ocrLines.length>0&&(
+          <button type="button" onClick={()=>setPickFor(p=>p===key?null:key)}
+            className="flex-shrink-0 px-3 rounded-2xl text-xs font-semibold"
+            style={pickFor===key?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"#c4b5fd"}}>
+            Pick
+          </button>
+        )}
+      </div>
+      {pickFor===key&&(
+        <div className="mt-2 rounded-2xl p-2 space-y-1 overflow-y-auto" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`,maxHeight:"11rem"}}>
+          <div className="text-white/35 text-[11px] px-2 pb-1">Tap the line from the card to use</div>
+          {ocrLines.map((l,i)=>(
+            <button key={i} type="button" onClick={()=>{setFields(f=>({...f,[key]:l}));setPickFor(null);}}
+              className="block w-full text-left text-xs text-white/80 px-3 py-2 rounded-xl" style={{background:"rgba(255,255,255,0.04)"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
@@ -1583,12 +1610,12 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
           {step==="confirm"&&(
             <div className="space-y-3">
               <div className="text-white/50 text-xs">Check the details before saving — edit anything that's wrong.</div>
-              <input value={fields.name} onChange={e=>setFields(f=>({...f,name:e.target.value}))} placeholder="Full name *" className={inputCls} style={inputStyle}/>
-              <input value={fields.email} onChange={e=>setFields(f=>({...f,email:e.target.value}))} placeholder="Email" type="email" className={inputCls} style={inputStyle}/>
-              <input value={fields.mobile} onChange={e=>setFields(f=>({...f,mobile:e.target.value}))} placeholder="Mobile" className={inputCls} style={inputStyle}/>
-              <input value={fields.title} onChange={e=>setFields(f=>({...f,title:e.target.value}))} placeholder="Job title" className={inputCls} style={inputStyle}/>
-              <input value={fields.company} onChange={e=>setFields(f=>({...f,company:e.target.value}))} placeholder="Company" className={inputCls} style={inputStyle}/>
-              <input value={fields.website} onChange={e=>setFields(f=>({...f,website:e.target.value}))} placeholder="Website" className={inputCls} style={inputStyle}/>
+              {fieldRow("name","Full name *")}
+              {fieldRow("email","Email","email")}
+              {fieldRow("mobile","Mobile")}
+              {fieldRow("title","Job title")}
+              {fieldRow("company","Company")}
+              {fieldRow("website","Website")}
               <textarea value={fields.note} onChange={e=>setFields(f=>({...f,note:e.target.value}))} rows={2} placeholder="Where did you meet? (optional)"
                 className={inputCls+" resize-none"} style={inputStyle}/>
               <div className="text-white/25 text-[11px]">* Name plus an email or phone required</div>
@@ -2748,6 +2775,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
   const [questionAnswer, setQuestionAnswer] = useState("");
   const [showTicket, setShowTicket] = useState(null);
   const [showScanner, setShowScanner] = useState(null);
+  const [attProfile, setAttProfile] = useState(null); // attendee profile opened by the host
   const [calFilter, setCalFilter] = useState(null);
   const [groupChat, setGroupChat] = useState(null);
   const [myCalendars, setMyCalendars] = useState([]);
@@ -3621,31 +3649,60 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                 {ownsEvent(selectedEvent)&&(
                   <div>
                     <div className="text-white/35 text-xs font-semibold uppercase tracking-wider mb-3">
-                      Attendees ({(eventAttendees[selectedEvent.id]||[]).length}) · tap ✓ to mark attendance
+                      Attendees ({(eventAttendees[selectedEvent.id]||[]).length}) · tap a name to view profile, ✓ to check in
                     </div>
+                    {(eventAttendees[selectedEvent.id]||[]).length>0&&(
+                      <div className="text-emerald-400 text-sm font-bold mb-3">
+                        {(eventAttendees[selectedEvent.id]||[]).filter(a=>a.attended).length} / {(eventAttendees[selectedEvent.id]||[]).length} arrived
+                      </div>
+                    )}
                     {(eventAttendees[selectedEvent.id]||[]).length===0 ? (
                       <div className="text-white/30 text-sm py-3 text-center rounded-2xl" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
                         No one has registered yet
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        {(eventAttendees[selectedEvent.id]||[]).map(att=>(
+                      (()=>{
+                        const all=eventAttendees[selectedEvent.id]||[];
+                        const arrived=all.filter(a=>a.attended);
+                        const waiting=all.filter(a=>!a.attended);
+                        const row=att=>(
                           <div key={att.id} className="flex items-center gap-3 p-3 rounded-2xl" style={{background:att.attended?"rgba(16,185,129,0.08)":"rgba(255,255,255,0.03)",border:att.attended?"1px solid rgba(16,185,129,0.25)":`1px solid ${BORDER}`}}>
-                            <Av name={att.name} url={att.avatar_url} color={pal(att.id)} size="sm" ring/>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-white text-sm font-semibold truncate">{att.name||"Unnamed"}</div>
-                              <div className="text-white/40 text-xs truncate">{att.role||"Member"}{att.location?` · ${att.location}`:""}</div>
-                              <div className="text-white/50 text-xs mt-0.5 truncate">📧 {att.email}{att.mobile?`  ·  📱 ${att.mobile}`:""}</div>
-                            </div>
+                            <button type="button" onClick={()=>setAttProfile(att)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                              <Av name={att.name} url={att.avatar_url} color={pal(att.id)} size="sm" ring/>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <div className="text-white text-sm font-semibold truncate">{att.name||"Unnamed"}</div>
+                                  {att.attended&&<span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md" style={{background:"rgba(52,211,153,0.18)",color:"#34d399"}}>✓ IN</span>}
+                                </div>
+                                <div className="text-white/40 text-xs truncate">{att.role||"Member"}{att.location?` · ${att.location}`:""}</div>
+                                <div className="text-white/50 text-xs mt-0.5 truncate">📧 {att.email}{att.mobile?`  ·  📱 ${att.mobile}`:""}</div>
+                              </div>
+                            </button>
                             <button onClick={()=>toggleAttended(selectedEvent.id,att.id,att.attended)}
                               className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold transition-all"
                               style={att.attended?{background:"linear-gradient(135deg,#10b981,#34d399)",color:"#fff"}:{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.4)"}}
-                              title={att.attended?"Attended":"Mark as attended"}>
+                              title={att.attended?"Attended — tap to undo":"Mark as attended"}>
                               ✓
                             </button>
                           </div>
-                        ))}
-                      </div>
+                        );
+                        return (
+                          <div className="space-y-4">
+                            <div>
+                              <div className="text-emerald-400/80 text-xs font-semibold mb-2">Checked in ({arrived.length})</div>
+                              {arrived.length===0
+                                ? <div className="text-white/30 text-xs py-2 text-center rounded-xl" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>No one has checked in yet</div>
+                                : <div className="space-y-2">{arrived.map(row)}</div>}
+                            </div>
+                            <div>
+                              <div className="text-white/45 text-xs font-semibold mb-2">Not yet arrived ({waiting.length})</div>
+                              {waiting.length===0
+                                ? <div className="text-white/30 text-xs py-2 text-center rounded-xl" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>Everyone has arrived 🎉</div>
+                                : <div className="space-y-2">{waiting.map(row)}</div>}
+                            </div>
+                          </div>
+                        );
+                      })()
                     )}
                   </div>
                 )}
@@ -3668,12 +3725,19 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                   </button>
                 )}
 
-                {/* Ticket (attendees) */}
-                {selectedEvent.attending&&!selectedEvent.past&&(
-                  <button onClick={()=>setShowTicket(selectedEvent)}
-                    className="w-full py-3 rounded-2xl text-white font-semibold mb-2" style={{background:"rgba(255,255,255,0.08)",border:`1px solid ${BORDER}`}}>
-                    🎟️ My Ticket (QR)
-                  </button>
+                {/* Ticket (attendees) — shown inline on the event page */}
+                {selectedEvent.attending&&!selectedEvent.past&&!String(selectedEvent.id).startsWith("e")&&user?.id&&(
+                  <div className="rounded-2xl p-4 mb-2 flex items-center gap-4" style={{background:"rgba(124,111,224,0.12)",border:"1px solid rgba(167,139,250,0.35)"}}>
+                    <div className="flex-shrink-0 p-2 rounded-xl" style={{background:"#fff"}}>
+                      <img src={ticketQrUrl(selectedEvent.id,user.id)} alt="Your entry QR" width={132} height={132} style={{width:132,height:132,display:"block"}}/>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-violet-300 text-[10px] font-semibold uppercase tracking-wider mb-1">🎟️ Your ticket</div>
+                      <div className="text-white/40 text-[10px] uppercase tracking-wider">Ticket code</div>
+                      <div className="text-white font-bold text-lg tracking-widest">{shortTicketCode(selectedEvent.id,user.id)}</div>
+                      <p className="text-white/40 text-xs mt-2">Show this QR at the door, or give the code to the host</p>
+                    </div>
+                  </div>
                 )}
 
                 {/* Door scanner (host) */}
@@ -3706,6 +3770,11 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
         {groupChat&&<EventGroupChat key="gchat" event={groupChat} user={user}
           canPost={attSet[groupChat.id]==="approved"||groupChat.creator_id===user?.id}
           onClose={()=>setGroupChat(null)}/>}
+      </AnimatePresence>
+
+      {/* Attendee profile (opened by the host from the check-in list) */}
+      <AnimatePresence>
+        {attProfile&&<ProfileModal key="attprofile" p={attProfile} onClose={()=>setAttProfile(null)} user={user} isAdmin={isAdmin} showToast={showToast} onLoginRequired={()=>setAttProfile(null)}/>}
       </AnimatePresence>
 
       {/* Ticket & scanner */}
