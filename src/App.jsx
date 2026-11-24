@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
 import { AU_SUBURBS, AU_SUBURB_LIST } from "./auSuburbs";
+import { getLang, setLang } from "./i18n.js";
 
 const SUPABASE_URL = "https://xvvjruoeggohktflwnak.supabase.co";
 const SUPABASE_ANON = "sb_publishable_Q-vS4CYYvQSsGp0rN8OhwQ_wyDXAC6p";
@@ -259,7 +260,7 @@ function SuburbAutocomplete({ value, onChange, showToast }) {
         <input value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}} onFocus={()=>setOpen(true)}
           onBlur={()=>setTimeout(()=>setOpen(false),150)}
           placeholder="Start typing your suburb…"
-          className="flex-1 rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
+          className="flex-1 min-w-0 rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none"
           style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"}}/>
         <div className="rounded-2xl px-4 py-3 flex items-center justify-center font-semibold flex-shrink-0"
           style={{background:"rgba(124,111,224,0.12)",border:"1px solid rgba(124,111,224,0.3)",color:statePart?"#a78bfa":"rgba(255,255,255,0.3)",minWidth:"64px",fontSize:"14px"}}>
@@ -398,6 +399,126 @@ function SkillChip({ label }) {
   );
 }
 
+// ═══ SHARED: "Open to" status, chips, sheets, one-tap connect ═══
+const OPEN_TO = [
+  { id:"cofounder",    label:"Co-founder",    color:"#a78bfa" },
+  { id:"hiring",       label:"Hiring",        color:"#34d399" },
+  { id:"investing",    label:"Investing",     color:"#fbbf24" },
+  { id:"mentoring",    label:"Mentoring",     color:"#7cb9e8" },
+  { id:"customers",    label:"New customers", color:"#f472b6" },
+  { id:"partnerships", label:"Partnerships",  color:"#c4b5fd" },
+  { id:"advice",       label:"Seeking advice",color:"#fb923c" },
+];
+const openToList = (p)=>Array.isArray(p?.open_to) ? p.open_to.filter(id=>OPEN_TO.some(o=>o.id===id)) : [];
+
+function OpenToBadges({ p, max=3, size="sm" }){
+  const ids=openToList(p);
+  if(!ids.length) return null;
+  const shown=ids.slice(0,max);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {size!=="xs"&&<span className="text-white/35 text-[10px] font-semibold uppercase tracking-wider mr-0.5">Open to</span>}
+      {shown.map(id=>{ const o=OPEN_TO.find(x=>x.id===id); return (
+        <span key={id} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium"
+          style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,color:"rgba(255,255,255,0.78)"}}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{background:o.color,boxShadow:`0 0 6px ${o.color}`}}/>{o.label}
+        </span>
+      );})}
+      {ids.length>max&&<span className="text-white/35 text-[11px]">+{ids.length-max}</span>}
+    </div>
+  );
+}
+
+// Rounded filter / toggle pill used across the new screens
+function Pill({ active, onClick, children, dot }){
+  return (
+    <button type="button" onClick={onClick}
+      className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all"
+      style={active
+        ?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff",boxShadow:"0 4px 14px rgba(124,111,224,0.3)"}
+        :{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.6)",border:`1px solid ${BORDER}`}}>
+      {dot&&<span className="w-1.5 h-1.5 rounded-full" style={{background:active?"#fff":dot}}/>}
+      {children}
+    </button>
+  );
+}
+
+// Bottom sheet on phones, centred card on desktop
+function Sheet({ title, subtitle, onClose, children, footer }){
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      className="fixed inset-0 !m-0 z-[90] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4"
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
+        className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl flex flex-col"
+        style={{background:"#0f1320",border:`1px solid ${BORDER}`,maxHeight:"92vh"}}>
+        <div className="p-5 pb-3 flex items-start justify-between gap-3" style={{borderBottom:`1px solid ${BORDER}`}}>
+          <div className="min-w-0">
+            <div className="text-white font-bold text-base">{title}</div>
+            {subtitle&&<div className="text-white/40 text-xs mt-0.5">{subtitle}</div>}
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-white/50" style={{background:"rgba(255,255,255,0.06)"}} aria-label="Close">✕</button>
+        </div>
+        <div className="p-5 overflow-y-auto flex-1">{children}</div>
+        {footer&&<div className="p-4" style={{borderTop:`1px solid ${BORDER}`}}>{footer}</div>}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+const fieldCls="w-full rounded-2xl px-4 py-3 text-white placeholder-white/25 focus:outline-none";
+const fieldStyle={background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`,fontSize:"16px"};
+
+function timeAgo(iso){
+  const s=Math.max(0,(Date.now()-new Date(iso).getTime())/1000);
+  if(s<60) return "just now";
+  if(s<3600) return `${Math.floor(s/60)}m ago`;
+  if(s<86400) return `${Math.floor(s/3600)}h ago`;
+  if(s<86400*7) return `${Math.floor(s/86400)}d ago`;
+  return new Date(iso).toLocaleDateString("en-AU",{day:"numeric",month:"short"});
+}
+
+// Send a partnership (connection) request from anywhere in the app.
+// Returns the new request row, or null if it couldn't be sent.
+async function sendConnectRequest({ user, profile, isApproved, other, showToast }){
+  if(!user){ showToast("Sign in to connect","error"); return null; }
+  if(!isApproved){ showToast("Your account is pending admin approval","error"); return null; }
+  if(!other?.id || other.id===user.id) return null;
+  try{
+    const {data:existing}=await supabase.from("match_requests").select("*")
+      .or(`and(from_user_id.eq.${user.id},to_user_id.eq.${other.id}),and(from_user_id.eq.${other.id},to_user_id.eq.${user.id})`).limit(1);
+    if(existing&&existing.length){ showToast(existing[0].status==="accepted"?"You're already connected ✓":"Request already sent ✓"); return existing[0]; }
+    const {data,error}=await supabase.from("match_requests").insert({from_user_id:user.id,to_user_id:other.id}).select().single();
+    if(error) throw error;
+    if(other.email) sendEmail("partner_request", other.email, { fromName: profile?.name||"A founder" });
+    showToast(`Request sent to ${String(other.name||"them").split(" ")[0]} ✓`);
+    return data;
+  }catch(e){ showToast(e.message||"Couldn't send request","error"); return null; }
+}
+
+// Load my connection status with everyone: { otherUserId: "accepted" | "pending" }
+async function loadMyConnections(userId){
+  if(!userId) return {};
+  try{
+    const {data}=await supabase.from("match_requests").select("from_user_id,to_user_id,status")
+      .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`);
+    const map={};
+    (data||[]).forEach(r=>{ const other=r.from_user_id===userId?r.to_user_id:r.from_user_id; if(r.status==="accepted"||r.status==="pending") map[other]=map[other]==="accepted"?"accepted":r.status; });
+    return map;
+  }catch(e){ return {}; }
+}
+
+function ConnectButton({ state, onClick, busy }){
+  if(state==="accepted") return <span className="flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold" style={{background:"rgba(52,211,153,0.14)",color:"#34d399"}}>✓ Connected</span>;
+  if(state==="pending") return <span className="flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold" style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.5)"}}>Requested</span>;
+  return (
+    <button type="button" onClick={onClick} disabled={busy}
+      className="abaa-gradient flex-shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-bold text-white" style={{opacity:busy?0.6:1}}>
+      {busy?"…":"Connect"}
+    </button>
+  );
+}
+
 function SectionLabel({ icon, text, count }) {
   return (
     <div className="flex items-center gap-2 mb-4">
@@ -411,7 +532,7 @@ function SectionLabel({ icon, text, count }) {
 function Toast({ msg, type }) {
   return (
     <motion.div initial={{opacity:0,y:30}} animate={{opacity:1,y:0}} exit={{opacity:0,y:30}}
-      className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl text-sm font-medium text-white whitespace-nowrap"
+      className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl text-sm font-medium text-white text-center w-max max-w-[calc(100vw-32px)]"
       style={{background:type==="error"?"rgba(239,68,68,0.9)":"rgba(124,111,224,0.9)",boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}>
       {msg}
     </motion.div>
@@ -440,7 +561,7 @@ function LoginModal({ onClose }) {
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
+      className="fixed inset-0 !m-0 z-[70] flex items-center justify-center bg-black/80 p-4"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{scale:0.92,y:20}} animate={{scale:1,y:0}} exit={{scale:0.92,y:20}}
         className="w-full max-w-md rounded-3xl overflow-hidden relative"
@@ -593,7 +714,7 @@ function ChatModal({ matchId, other, me, myProfile, onClose }) {
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/70" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      className="fixed inset-0 !m-0 z-[80] flex items-end md:items-center justify-center bg-black/70" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}}
         className="w-full max-w-md flex flex-col overflow-hidden rounded-t-3xl md:rounded-3xl mb-[72px] md:mb-0"
         style={{height:"72vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
@@ -761,7 +882,7 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/80"
+      className="fixed inset-0 !m-0 z-[80] flex items-end md:items-center justify-center bg-black/80"
       style={{padding:0}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
@@ -806,6 +927,17 @@ function ProfileModal({ p, onClose, onRequest, matchState, user, isAdmin, showTo
           {editing
             ? <div className="space-y-1.5"><div className="text-white/35 text-xs uppercase tracking-wider font-semibold">Bio</div><textarea value={editForm.bio} onChange={e=>setEditForm(f=>({...f,bio:e.target.value}))} rows={3} className="w-full rounded-2xl px-3 py-2.5 text-sm text-white focus:outline-none resize-none" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}/></div>
             : p.bio&&<p className="text-white/65 text-sm leading-relaxed">{p.bio}</p>}
+
+          {/* Open to */}
+          {!editing&&openToList(p).length>0&&<OpenToBadges p={p} max={7}/>}
+
+          {/* Mentor office hours */}
+          {!editing&&p.is_mentor&&(
+            <div className="p-3 rounded-2xl" style={{background:"linear-gradient(135deg,rgba(124,185,232,0.12),rgba(124,111,224,0.06))",border:"1px solid rgba(124,185,232,0.25)"}}>
+              <div className="text-[#7cb9e8] text-xs font-semibold mb-1">🧭 Mentor · offers free office hours</div>
+              {p.mentor_topics&&<div className="text-white/65 text-xs leading-relaxed">{p.mentor_topics}</div>}
+            </div>
+          )}
 
           {/* Project */}
           {(p.project_name||p.project_pitch)&&(
@@ -1053,7 +1185,7 @@ function NotificationCenter({ user, notif, onClose, onGo }){
   if(notif.bookings>0)items.push({emoji:"📅",title:`${notif.bookings} meeting request${notif.bookings>1?"s":""}`,body:"Accept or decline in your profile",tab:"profile"});
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[90] flex items-start justify-center bg-black/80 pt-16 px-4"
+      className="fixed inset-0 !m-0 z-[90] flex items-start justify-center bg-black/80 pt-16 px-4"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:-20,opacity:0}} animate={{y:0,opacity:1}}
         className="w-full max-w-sm rounded-3xl overflow-hidden" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
@@ -1111,7 +1243,7 @@ function GlobalSearch({ user, onClose, onOpenProfile, onGoTab }){
   const total=res.people.length+res.projects.length+res.events.length;
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[90] flex items-start justify-center bg-black/85 pt-14 px-4"
+      className="fixed inset-0 !m-0 z-[90] flex items-start justify-center bg-black/85 pt-14 px-4"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:-16,opacity:0}} animate={{y:0,opacity:1}}
         className="w-full max-w-md rounded-3xl overflow-hidden flex flex-col" style={{background:"#0f1320",border:`1px solid ${BORDER}`,maxHeight:"80vh"}}>
@@ -1267,8 +1399,45 @@ function EventFeedback({ event, user, showToast }){
 }
 
 // ═══ #14 POST-EVENT FOLLOW-UP ═══
-function PostEventFollowUp({ events, attSet, eventAttendees, user, onConnect, showToast }){
+// "Who I met" — after an event, connect with the people who were there in one tap
+function WhoIMet({ event, attendees, user, profile, isApproved, showToast, max=50 }){
+  const [conn,setConn]=useState({});
+  const [busy,setBusy]=useState(null);
+  useEffect(()=>{ let on=true; loadMyConnections(user?.id).then(m=>{ if(on) setConn(m); }); return ()=>{ on=false; }; },[user?.id,event?.id]);
+  const people=(attendees||[]).filter(g=>g&&g.id&&g.id!==user?.id).slice(0,max);
+  if(!people.length) return <div className="text-white/35 text-xs">No other guests to show yet.</div>;
+  async function connect(o){
+    setBusy(o.id);
+    const r=await sendConnectRequest({user,profile,isApproved,other:o,showToast});
+    if(r) setConn(c=>({...c,[o.id]:r.status==="accepted"?"accepted":"pending"}));
+    setBusy(null);
+  }
+  const open=people.filter(o=>!conn[o.id]);
+  return (
+    <div className="space-y-2">
+      {people.map(o=>(
+        <div key={o.id} className="flex items-center gap-3 p-2.5 rounded-2xl" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+          <Av name={o.name} url={o.avatar_url} color={pal(o.id)} size="sm"/>
+          <div className="flex-1 min-w-0">
+            <div className="text-white text-sm font-semibold truncate">{o.name||"Member"}</div>
+            <div className="text-white/40 text-xs truncate">{o.role||"Member"}{o.location?` · ${o.location}`:""}</div>
+          </div>
+          <ConnectButton state={conn[o.id]} busy={busy===o.id} onClick={()=>connect(o)}/>
+        </div>
+      ))}
+      {open.length>1&&(
+        <button type="button" disabled={!!busy} onClick={async()=>{ for(const o of open){ await connect(o); } }}
+          className="w-full mt-1 py-2.5 rounded-2xl text-xs font-semibold" style={{background:"rgba(124,111,224,0.1)",border:"1px solid rgba(124,111,224,0.35)",color:"#c4b5fd"}}>
+          Connect with all {open.length}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PostEventFollowUp({ events, attSet, eventAttendees, user, profile, isApproved, showToast }){
   const [dismissed,setDismissed]=useState(()=>{ try{ return JSON.parse(localStorage.getItem("abaa_followup_dismissed")||"[]"); }catch(e){ return []; } });
+  const [open,setOpen]=useState(false);
   const now=new Date();
   // Events I attended that finished in the last 14 days
   const recent=(events||[]).filter(ev=>{
@@ -1280,7 +1449,7 @@ function PostEventFollowUp({ events, attSet, eventAttendees, user, onConnect, sh
   });
   if(recent.length===0) return null;
   const ev=recent[0];
-  const others=(eventAttendees[ev.id]||[]).filter(g=>g&&g.id!==user?.id).slice(0,6);
+  const others=(eventAttendees[ev.id]||[]).filter(g=>g&&g.id!==user?.id);
   if(others.length===0) return null;
   function dismiss(){
     const next=[...dismissed,ev.id];
@@ -1288,24 +1457,26 @@ function PostEventFollowUp({ events, attSet, eventAttendees, user, onConnect, sh
     try{ localStorage.setItem("abaa_followup_dismissed",JSON.stringify(next)); }catch(e){}
   }
   return (
-    <Card className="p-4" style={{border:"1px solid rgba(245,158,11,0.3)",background:"linear-gradient(135deg,rgba(245,158,11,0.10),rgba(245,158,11,0.02))"}}>
-      <div className="flex items-start justify-between mb-1">
-        <div>
-          <div className="text-white font-bold text-sm">👋 You attended {ev.title}</div>
-          <div className="text-white/45 text-xs">Connect with people you met — they're just a tap away</div>
+    <Card className="p-4" style={{border:"1px solid rgba(167,139,250,0.3)",background:"linear-gradient(135deg,rgba(124,111,224,0.14),rgba(124,185,232,0.04))"}}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[#c4b5fd] text-[10px] font-semibold uppercase tracking-wider mb-1">Who you met</div>
+          <div className="text-white font-bold text-sm">{ev.title}</div>
+          <div className="text-white/45 text-xs mt-0.5">{others.length} {others.length===1?"person":"people"} were there — connect while it's fresh</div>
         </div>
-        <button onClick={dismiss} className="text-white/25 text-xs px-1">✕</button>
+        <button onClick={dismiss} className="text-white/30 text-xs px-1" aria-label="Dismiss">✕</button>
       </div>
-      <div className="flex flex-wrap gap-2 mt-3">
-        {others.map(o=>(
-          <button key={o.id} onClick={()=>onConnect(o)}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-full transition-colors hover:bg-white/10"
-            style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>
-            <Av name={o.name} url={o.avatar_url} color={pal(o.id)} size="xs"/>
-            <span className="text-white/75 text-xs">{String(o.name).split(" ")[0]}</span>
-          </button>
-        ))}
-      </div>
+      {!open ? (
+        <button type="button" onClick={()=>setOpen(true)} className="w-full mt-3 flex items-center gap-3">
+          <div className="flex" style={{marginLeft:"6px"}}>
+            {others.slice(0,5).map((o,i)=>(<div key={o.id} style={{marginLeft:"-6px",zIndex:5-i}}><Av name={o.name} url={o.avatar_url} color={pal(o.id)} size="xs" ring/></div>))}
+          </div>
+          <span className="flex-1 text-left text-white/60 text-xs">{others.slice(0,2).map(o=>String(o.name||"").split(" ")[0]).join(", ")}{others.length>2?` +${others.length-2}`:""}</span>
+          <span className="abaa-gradient px-3.5 py-1.5 rounded-full text-[11px] font-bold text-white">See all</span>
+        </button>
+      ) : (
+        <div className="mt-3"><WhoIMet event={ev} attendees={others} user={user} profile={profile} isApproved={isApproved} showToast={showToast}/></div>
+      )}
     </Card>
   );
 }
@@ -1563,7 +1734,7 @@ function CardScanner({ user, profile, showToast, onClose, onSaved }){
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
+      className="fixed inset-0 !m-0 z-[95] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
         className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl flex flex-col"
@@ -1769,7 +1940,7 @@ function ConnectionLabelPicker({ matchId, current, onSaved, showToast }){
       </button>
       {open&&(
         <>
-          <div className="fixed inset-0 z-[70]" onClick={(e)=>{e.stopPropagation();setOpen(false);}}/>
+          <div className="fixed inset-0 !m-0 z-[70]" onClick={(e)=>{e.stopPropagation();setOpen(false);}}/>
           <div className="absolute right-0 mt-1 z-[71] rounded-2xl p-1.5 w-52" style={{background:"#151a2b",border:`1px solid ${BORDER}`,boxShadow:"0 12px 32px rgba(0,0,0,0.6)"}}>
             {MEET_LABELS.map(l=>(
               <button key={l.id} onClick={(e)=>{e.stopPropagation();pick(l.id);}}
@@ -1801,6 +1972,7 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
   const [filterAvail, setFilterAvail] = useState("");
   const [filterExp, setFilterExp] = useState("");
   const [filterVerified, setFilterVerified] = useState(false);
+  const [filterOpenTo, setFilterOpenTo] = useState("");
   const [connLabelFilter, setConnLabelFilter] = useState(null);
   const [bookingTarget, setBookingTarget] = useState(null);
   const [selectedProfile, setSelectedProfile] = useState(null);
@@ -1973,7 +2145,8 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
       (p.experience||0)>10
     );
     const matchesVerified = !filterVerified || !!p.verified;
-    return matchesSearch && matchesIndustry && matchesRole && matchesAvail && matchesExp && matchesVerified;
+    const matchesOpenTo = !filterOpenTo || openToList(p).includes(filterOpenTo);
+    return matchesSearch && matchesIndustry && matchesRole && matchesAvail && matchesExp && matchesVerified && matchesOpenTo;
   });
 
   function profileReadyToReachOut(){
@@ -2082,6 +2255,15 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
             ⚙
           </button>
         </div>
+
+        {/* Quick filter: what people are open to */}
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{scrollbarWidth:"none"}}>
+          <Pill active={!filterOpenTo} onClick={()=>setFilterOpenTo("")}>Everyone</Pill>
+          {OPEN_TO.map(o=>(
+            <Pill key={o.id} dot={o.color} active={filterOpenTo===o.id} onClick={()=>setFilterOpenTo(filterOpenTo===o.id?"":o.id)}>{o.label}</Pill>
+          ))}
+        </div>
+        {filterOpenTo&&<div className="text-white/40 text-xs -mt-1">{filtered.length} {filtered.length===1?"person":"people"} open to {OPEN_TO.find(o=>o.id===filterOpenTo)?.label.toLowerCase()}</div>}
 
         <AnimatePresence>
           {showFilters&&(
@@ -2201,6 +2383,8 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
                   {p.project_industry&&<SkillChip label={p.project_industry}/>}
                 </div>
 
+                {openToList(p).length>0&&<div className="mb-3"><OpenToBadges p={p} max={3}/></div>}
+
                 {/* #17 Why this person is suggested */}
                 {(()=>{
                   const reasons=matchReasons(p);
@@ -2247,7 +2431,7 @@ function MatchTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, 
       <AnimatePresence>{chat&&<ChatModal matchId={chat.matchId} other={chat.other} me={user} myProfile={profile} onClose={()=>setChat(null)}/>}</AnimatePresence>
       <AnimatePresence>{showAllMessages&&(
         <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-          className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/80"
+          className="fixed inset-0 !m-0 z-[80] flex items-end md:items-center justify-center bg-black/80"
           onClick={e=>e.target===e.currentTarget&&setShowAllMessages(false)}>
           <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
             className="w-full md:max-w-md flex flex-col rounded-t-3xl md:rounded-3xl"
@@ -2358,7 +2542,7 @@ function ticketQrUrl(eventId, userId){
 function TicketModal({ event, userId, onClose }){
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/85 p-4" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      className="fixed inset-0 !m-0 z-[95] flex items-center justify-center bg-black/85 p-4" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="w-full max-w-xs rounded-3xl p-6 text-center" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
         <div className="text-white font-bold text-lg mb-1">Your Ticket</div>
         <div className="text-white/50 text-sm mb-4">{event.title}</div>
@@ -2411,7 +2595,7 @@ function CheckInScanner({ event, onCheckIn, onCheckInByShortCode, onClose, showT
   },[event.id]);
 
   return (
-    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[95] flex flex-col bg-black">
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 !m-0 z-[95] flex flex-col bg-black">
       <div className="p-4 flex items-center justify-between" style={{borderBottom:`1px solid ${BORDER}`}}>
         <div className="text-white font-bold">📷 Check-in Scanner</div>
         <button onClick={onClose} className="text-white/60 text-xl px-2">✕</button>
@@ -2628,7 +2812,7 @@ function CalendarCreate({ user, showToast, onClose }){
   }
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[92] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
+      className="fixed inset-0 !m-0 z-[92] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
         className="w-full md:max-w-sm rounded-t-3xl md:rounded-3xl p-6" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
@@ -2694,7 +2878,7 @@ function EventGroupChat({ event, user, canPost, onClose }){
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
+      className="fixed inset-0 !m-0 z-[95] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
         className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl flex flex-col"
@@ -3213,7 +3397,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
       {/* #14 Post-event follow-up prompt */}
       {user&&(
         <PostEventFollowUp events={events} attSet={attSet} eventAttendees={eventAttendees} user={user}
-          onConnect={(o)=>{ showToast(`Open Match to connect with ${String(o.name).split(" ")[0]}`); }}
+          profile={profile} isApproved={isApproved}
           showToast={showToast}/>
       )}
 
@@ -3513,7 +3697,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
       <AnimatePresence>
         {selectedEvent&&(
           <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-black/70 p-0 md:p-4"
+            className="fixed inset-0 !m-0 z-[80] flex items-end md:items-center justify-center bg-black/70 p-0 md:p-4"
             onClick={e=>e.target===e.currentTarget&&setSelectedEvent(null)}>
             <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}}
               className="w-full max-w-lg overflow-y-auto rounded-t-3xl md:rounded-3xl mb-[72px] md:mb-0"
@@ -3717,6 +3901,17 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
                   </div>
                 )}
 
+                {/* Who you met — past events you attended or hosted */}
+                {selectedEvent.past&&!String(selectedEvent.id).startsWith("e")&&(selectedEvent.attending||isCreator(selectedEvent))
+                  &&(selectedEvent.guest_list_public!==false||isCreator(selectedEvent))
+                  &&(eventAttendees[selectedEvent.id]||[]).some(g=>g&&g.id!==user?.id)&&(
+                  <div className="rounded-2xl p-4 mb-2" style={{background:"rgba(124,111,224,0.08)",border:"1px solid rgba(167,139,250,0.25)"}}>
+                    <div className="text-white font-semibold text-sm">👋 Who you met</div>
+                    <div className="text-white/45 text-xs mb-3">Connect with people from this event — they'll get a request from you.</div>
+                    <WhoIMet event={selectedEvent} attendees={eventAttendees[selectedEvent.id]} user={user} profile={profile} isApproved={isApproved} showToast={showToast}/>
+                  </div>
+                )}
+
                 {/* Group chat */}
                 {!String(selectedEvent.id).startsWith("e")&&(selectedEvent.attending||isCreator(selectedEvent))&&(
                   <button onClick={()=>setGroupChat(selectedEvent)}
@@ -3816,7 +4011,7 @@ function EventsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin,
       <AnimatePresence>
         {questionPrompt&&(
           <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4"
+            className="fixed inset-0 !m-0 z-[90] flex items-center justify-center bg-black/80 p-4"
             onClick={e=>e.target===e.currentTarget&&setQuestionPrompt(null)}>
             <motion.div initial={{scale:0.95,opacity:0}} animate={{scale:1,opacity:1}} className="w-full max-w-sm rounded-3xl p-6" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
               <div className="text-white font-bold text-base mb-1">One quick question</div>
@@ -4131,7 +4326,495 @@ function ProjectJoinRequests({ user, showToast }) {
 // ════════════════════════════════════════════════════════
 // PROJECTS TAB — browse & join others' projects
 // ════════════════════════════════════════════════════════
-function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs }) {
+// ═══════════════════════════════════════════════════════════════
+// COMMUNITY HUB — Asks & Offers · Perks · Mentors · Projects
+// ═══════════════════════════════════════════════════════════════
+const ASK_CATEGORIES = ["Introductions","Suppliers","Hiring","Funding","Advice","Services","Other"];
+const PERK_CATEGORIES = ["Professional services","Software & tools","Marketing","Food & venues","Travel","Other"];
+
+function SetupNotice({ what }){
+  return (
+    <Card className="p-6 text-center">
+      <div className="text-3xl mb-2">⚙️</div>
+      <div className="text-white font-semibold text-sm">{what} is almost ready</div>
+      <div className="text-white/40 text-xs mt-1">It's being switched on. Check back shortly.</div>
+    </Card>
+  );
+}
+
+function KindBadge({ kind }){
+  const ask=kind==="ask";
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold"
+      style={{background:ask?"rgba(251,191,36,0.12)":"rgba(52,211,153,0.12)",color:ask?"#fbbf24":"#34d399"}}>
+      <span className="w-1.5 h-1.5 rounded-full" style={{background:ask?"#fbbf24":"#34d399"}}/>{ask?"Ask":"Offer"}
+    </span>
+  );
+}
+
+// Private conversation between the post owner and one other member
+function ReplyThread({ post, user, profile, other, showToast }){
+  const [msgs,setMsgs]=useState(null);
+  const [text,setText]=useState("");
+  const [sending,setSending]=useState(false);
+  const endRef=useRef();
+  async function load(){
+    const {data,error}=await supabase.from("community_replies").select("*").eq("post_id",post.id)
+      .or(`and(user_id.eq.${user.id},to_user_id.eq.${other.id}),and(user_id.eq.${other.id},to_user_id.eq.${user.id})`)
+      .order("created_at",{ascending:true});
+    if(!error) setMsgs(data||[]); else setMsgs([]);
+  }
+  useEffect(()=>{ load(); const iv=setInterval(load,8000); return ()=>clearInterval(iv); },[post.id,other.id]);
+  useEffect(()=>{ endRef.current?.scrollIntoView({block:"end"}); },[msgs?.length]);
+  async function send(){
+    const body=text.trim(); if(!body) return;
+    setSending(true);
+    const {data,error}=await supabase.from("community_replies").insert({post_id:post.id,user_id:user.id,to_user_id:other.id,body}).select().single();
+    setSending(false);
+    if(error){ showToast(error.message||"Couldn't send","error"); return; }
+    setMsgs(m=>[...(m||[]),data]); setText("");
+    if(other.email) sendEmail("new_message", other.email, { fromName: `${profile?.name||"A member"} (re: ${post.title})` });
+  }
+  return (
+    <div>
+      <div className="space-y-2 mb-3">
+        {msgs===null&&<SkeletonList n={2}/>}
+        {msgs&&msgs.length===0&&<div className="text-white/35 text-xs text-center py-3">Only you and {String(other.name||"them").split(" ")[0]} can see this conversation.</div>}
+        {(msgs||[]).map(m=>{ const mine=m.user_id===user.id; return (
+          <div key={m.id} className={`flex ${mine?"justify-end":"justify-start"}`}>
+            <div className="max-w-[82%] px-3.5 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap"
+              style={mine?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff",borderBottomRightRadius:"6px"}:{background:"rgba(255,255,255,0.07)",color:"rgba(255,255,255,0.85)",borderBottomLeftRadius:"6px"}}>
+              {m.body}
+              <div className="text-[10px] mt-1" style={{opacity:0.6}}>{timeAgo(m.created_at)}</div>
+            </div>
+          </div>
+        );})}
+        <div ref={endRef}/>
+      </div>
+      <div className="flex gap-2">
+        <textarea value={text} onChange={e=>setText(e.target.value)} rows={1} placeholder={`Reply privately to ${String(other.name||"them").split(" ")[0]}…`}
+          className={fieldCls+" flex-1 min-w-0 resize-none text-sm"} style={fieldStyle}/>
+        <button type="button" onClick={send} disabled={sending||!text.trim()} className="abaa-gradient flex-shrink-0 px-4 rounded-2xl text-white text-sm font-bold" style={{opacity:sending||!text.trim()?0.5:1}}>Send</button>
+      </div>
+    </div>
+  );
+}
+
+function PostSheet({ post, user, profile, isAdmin, showToast, onClose, onChanged }){
+  const mine=post.user_id===user.id;
+  const author=post.author||{};
+  const [convos,setConvos]=useState(null); // owner view: [{other, last}]
+  const [active,setActive]=useState(mine?null:{...author,id:post.user_id});
+  useEffect(()=>{
+    if(!mine) return;
+    (async()=>{
+      const {data}=await supabase.from("community_replies").select("*").eq("post_id",post.id).order("created_at",{ascending:false});
+      const byOther={};
+      (data||[]).forEach(r=>{ const o=r.user_id===user.id?r.to_user_id:r.user_id; if(!byOther[o]) byOther[o]=r; });
+      const ids=Object.keys(byOther);
+      let profs=[];
+      if(ids.length){ const {data:p}=await supabase.from("profiles").select("id,name,avatar_url,role,email").in("id",ids); profs=p||[]; }
+      setConvos(ids.map(id=>({other:profs.find(p=>p.id===id)||{id,name:"Member"},last:byOther[id]})));
+    })();
+  },[post.id,mine]);
+  async function setStatus(status){
+    const {error}=await supabase.from("community_posts").update({status}).eq("id",post.id);
+    if(error){ showToast(error.message,"error"); return; }
+    showToast(status==="closed"?"Marked as resolved ✓":"Reopened ✓"); onChanged(); onClose();
+  }
+  async function remove(){
+    if(!confirm("Delete this post?")) return;
+    const {error}=await supabase.from("community_posts").delete().eq("id",post.id);
+    if(error){ showToast(error.message,"error"); return; }
+    showToast("Post deleted"); onChanged(); onClose();
+  }
+  return (
+    <Sheet title={post.kind==="ask"?"Ask":"Offer"} subtitle={`${post.category||"General"} · ${timeAgo(post.created_at)}`} onClose={onClose}>
+      <div className="space-y-4">
+        <div>
+          <div className="flex items-center gap-2 mb-2"><KindBadge kind={post.kind}/>{post.status==="closed"&&<span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.5)"}}>Resolved</span>}</div>
+          <div className="text-white font-bold text-lg leading-snug">{post.title}</div>
+          {post.body&&<p className="text-white/65 text-sm leading-relaxed mt-2 whitespace-pre-wrap">{post.body}</p>}
+        </div>
+        <div className="flex items-center gap-3 p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+          <Av name={author.name} url={author.avatar_url} color={pal(post.user_id)} size="sm"/>
+          <div className="min-w-0"><div className="text-white text-sm font-semibold truncate">{mine?"You":author.name||"Member"}</div><div className="text-white/40 text-xs truncate">{author.role||"Member"}</div></div>
+        </div>
+
+        {mine ? (
+          active ? (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <button type="button" onClick={()=>setActive(null)} className="text-[#c4b5fd] text-xs font-semibold">‹ All replies</button>
+                <span className="text-white/25 text-xs">·</span>
+                <Av name={active.name} url={active.avatar_url} color={pal(active.id)} size="xs"/>
+                <span className="text-white text-xs font-semibold truncate">{active.name}</span>
+              </div>
+              <ReplyThread post={post} user={user} profile={profile} other={active} showToast={showToast}/>
+            </div>
+          ) : (
+            <div>
+              <div className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Private replies</div>
+              {convos===null&&<SkeletonList n={2}/>}
+              {convos&&convos.length===0&&<div className="text-white/35 text-xs py-2">No replies yet. Members who can help will message you here.</div>}
+              <div className="space-y-2">
+                {(convos||[]).map(({other,last})=>(
+                  <button key={other.id} type="button" onClick={()=>setActive(other)} className="w-full flex items-center gap-3 p-3 rounded-2xl text-left" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+                    <Av name={other.name} url={other.avatar_url} color={pal(other.id)} size="sm"/>
+                    <div className="flex-1 min-w-0"><div className="text-white text-sm font-semibold truncate">{other.name}</div><div className="text-white/45 text-xs truncate">{last.user_id===user.id?"You: ":""}{last.body}</div></div>
+                    <span className="text-white/25 text-xl">›</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2 mt-5">
+                <button type="button" onClick={()=>setStatus(post.status==="closed"?"open":"closed")} className="flex-1 py-2.5 rounded-2xl text-sm font-semibold" style={{background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.3)",color:"#34d399"}}>{post.status==="closed"?"Reopen":"✓ Mark resolved"}</button>
+                <button type="button" onClick={remove} className="py-2.5 px-4 rounded-2xl text-sm font-semibold" style={{border:"1px solid rgba(239,68,68,0.35)",color:"#f87171",background:"rgba(239,68,68,0.06)"}}>Delete</button>
+              </div>
+            </div>
+          )
+        ) : (
+          <div>
+            {post.status==="closed"
+              ? <div className="text-white/40 text-xs">This has been resolved, but you can still send a message.</div>
+              : <div className="text-white/40 text-xs mb-2">{post.kind==="ask"?"Can you help? Reply privately — only you and the poster will see it.":"Interested? Reply privately — only you and the poster will see it."}</div>}
+            <div className="mt-2"><ReplyThread post={post} user={user} profile={profile} other={active} showToast={showToast}/></div>
+            {isAdmin&&<button type="button" onClick={remove} className="w-full mt-4 py-2 rounded-2xl text-xs font-semibold" style={{border:"1px solid rgba(239,68,68,0.35)",color:"#f87171"}}>Admin: delete post</button>}
+          </div>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+function NewPostSheet({ user, onClose, onPosted, showToast }){
+  const [f,setF]=useState({kind:"ask",title:"",body:"",category:"Introductions"});
+  const [saving,setSaving]=useState(false);
+  async function post(){
+    if(!f.title.trim()){ showToast("Add a short headline first","error"); return; }
+    setSaving(true);
+    const {error}=await supabase.from("community_posts").insert({user_id:user.id,kind:f.kind,title:f.title.trim().slice(0,140),body:f.body.trim(),category:f.category,status:"open"});
+    setSaving(false);
+    if(error){ showToast(error.message||"Couldn't post","error"); return; }
+    showToast(f.kind==="ask"?"Your ask is live ✓":"Your offer is live ✓"); onPosted(); onClose();
+  }
+  return (
+    <Sheet title="New post" subtitle="Members reply to you privately" onClose={onClose}
+      footer={<PrimaryBtn onClick={post} loading={saving} className="w-full">{f.kind==="ask"?"Post my ask":"Post my offer"}</PrimaryBtn>}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl" style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`}}>
+          {[["ask","I'm looking for…"],["offer","I can offer…"]].map(([k,l])=>(
+            <button key={k} type="button" onClick={()=>setF(x=>({...x,kind:k}))} className="py-2.5 rounded-xl text-sm font-semibold transition-all"
+              style={f.kind===k?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{color:"rgba(255,255,255,0.55)"}}>{l}</button>
+          ))}
+        </div>
+        <input value={f.title} onChange={e=>setF(x=>({...x,title:e.target.value}))} maxLength={140}
+          placeholder={f.kind==="ask"?"e.g. Looking for a customs broker for food imports":"e.g. Free 30-min review of your pitch deck"} className={fieldCls} style={fieldStyle}/>
+        <textarea value={f.body} onChange={e=>setF(x=>({...x,body:e.target.value}))} rows={4} placeholder="Add a little detail (optional)" className={fieldCls+" resize-none"} style={fieldStyle}/>
+        <div>
+          <div className="text-white/40 text-xs font-semibold mb-2">Category</div>
+          <div className="flex flex-wrap gap-2">{ASK_CATEGORIES.map(c=><Pill key={c} active={f.category===c} onClick={()=>setF(x=>({...x,category:c}))}>{c}</Pill>)}</div>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+function AsksBoard({ user, profile, isApproved, isAdmin, showToast }){
+  const [posts,setPosts]=useState(null);
+  const [setup,setSetup]=useState(false);
+  const [kind,setKind]=useState("all");
+  const [mineOnly,setMineOnly]=useState(false);
+  const [replyCounts,setReplyCounts]=useState({});
+  const [showNew,setShowNew]=useState(false);
+  const [openPost,setOpenPost]=useState(null);
+  async function load(){
+    const {data,error}=await supabase.from("community_posts").select("*, author:profiles(id,name,avatar_url,role,email)").order("created_at",{ascending:false}).limit(150);
+    if(error){ setSetup(true); setPosts([]); return; }
+    setPosts(data||[]);
+    const {data:rs}=await supabase.from("community_replies").select("post_id,user_id").eq("to_user_id",user.id);
+    const c={}; const seen={};
+    (rs||[]).forEach(r=>{ const k=r.post_id+":"+r.user_id; if(!seen[k]){ seen[k]=1; c[r.post_id]=(c[r.post_id]||0)+1; } });
+    setReplyCounts(c);
+  }
+  useEffect(()=>{ load(); },[user?.id]);
+  if(setup) return <SetupNotice what="Asks & Offers"/>;
+  const list=(posts||[]).filter(p=>(kind==="all"||p.kind===kind)&&(!mineOnly||p.user_id===user.id))
+    .sort((a,b)=>(a.status==="closed")-(b.status==="closed"));
+  return (
+    <div className="space-y-4">
+      <div className="rounded-3xl p-5" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.18),rgba(124,185,232,0.06))",border:"1px solid rgba(167,139,250,0.28)"}}>
+        <div className="text-white font-bold text-base">Ask the community</div>
+        <div className="text-white/50 text-xs mt-1 mb-4">Need an intro, a supplier or advice? Or have something to offer? Members reply to you privately.</div>
+        <button type="button" onClick={()=>{ if(!isApproved){ showToast("Your account is pending admin approval","error"); return; } setShowNew(true); }}
+          className="abaa-gradient w-full py-3 rounded-2xl text-white text-sm font-bold">+ New ask or offer</button>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:"none"}}>
+        <Pill active={kind==="all"&&!mineOnly} onClick={()=>{setKind("all");setMineOnly(false);}}>All</Pill>
+        <Pill dot="#fbbf24" active={kind==="ask"&&!mineOnly} onClick={()=>{setKind("ask");setMineOnly(false);}}>Asks</Pill>
+        <Pill dot="#34d399" active={kind==="offer"&&!mineOnly} onClick={()=>{setKind("offer");setMineOnly(false);}}>Offers</Pill>
+        <Pill active={mineOnly} onClick={()=>{setMineOnly(!mineOnly);setKind("all");}}>My posts</Pill>
+      </div>
+      {posts===null ? <SkeletonList n={3}/> : list.length===0 ? (
+        <EmptyState emoji="💬" title={mineOnly?"You haven't posted yet":"Nothing here yet"} body="Be the first — post what you need or what you can offer." />
+      ) : (
+        <div className="space-y-3">
+          {list.map(p=>{ const a=p.author||{}; const mine=p.user_id===user.id; return (
+            <Card key={p.id} className="p-4 cursor-pointer" onClick={()=>setOpenPost(p)} style={{opacity:p.status==="closed"?0.55:1}}>
+              <div className="flex items-center gap-2 mb-2">
+                <KindBadge kind={p.kind}/>
+                <span className="text-white/35 text-[11px]">{p.category}</span>
+                <span className="text-white/25 text-[11px] ml-auto">{timeAgo(p.created_at)}</span>
+              </div>
+              <div className="text-white font-semibold text-sm leading-snug">{p.title}</div>
+              {p.body&&<div className="text-white/50 text-xs mt-1 leading-relaxed" style={{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{p.body}</div>}
+              <div className="flex items-center gap-2 mt-3">
+                <Av name={a.name} url={a.avatar_url} color={pal(p.user_id)} size="xs"/>
+                <span className="text-white/55 text-xs truncate">{mine?"You":a.name||"Member"}</span>
+                {p.status==="closed"&&<span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.5)"}}>Resolved</span>}
+                {mine&&p.status!=="closed"&&<span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-semibold" style={replyCounts[p.id]?{background:"rgba(124,111,224,0.2)",color:"#c4b5fd"}:{background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.4)"}}>{replyCounts[p.id]||0} {(replyCounts[p.id]||0)===1?"reply":"replies"}</span>}
+                {!mine&&p.status!=="closed"&&<span className="ml-auto text-[#c4b5fd] text-xs font-semibold">Reply ›</span>}
+              </div>
+            </Card>
+          );})}
+        </div>
+      )}
+      <AnimatePresence>
+        {showNew&&<NewPostSheet key="newpost" user={user} showToast={showToast} onClose={()=>setShowNew(false)} onPosted={load}/>}
+      </AnimatePresence>
+      <AnimatePresence>
+        {openPost&&<PostSheet key="post" post={openPost} user={user} profile={profile} isAdmin={isAdmin} showToast={showToast} onClose={()=>setOpenPost(null)} onChanged={load}/>}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function PerkForm({ user, profile, onClose, onSaved, showToast }){
+  const [f,setF]=useState({business_name:profile?.business_name||"",offer:"",title:"",description:"",how_to_redeem:"",url:"",category:"Professional services",expires_at:""});
+  const [saving,setSaving]=useState(false);
+  async function save(){
+    if(!f.business_name.trim()||!f.offer.trim()||!f.title.trim()){ showToast("Add your business, the offer and what it's for","error"); return; }
+    setSaving(true);
+    let url=f.url.trim(); if(url&&!/^https?:\/\//i.test(url)) url="https://"+url;
+    const {error}=await supabase.from("perks").insert({owner_id:user.id,business_name:f.business_name.trim(),offer:f.offer.trim().slice(0,40),title:f.title.trim(),description:f.description.trim(),how_to_redeem:f.how_to_redeem.trim(),url:url||null,category:f.category,expires_at:f.expires_at||null});
+    setSaving(false);
+    if(error){ showToast(error.message||"Couldn't save","error"); return; }
+    showToast("Your perk is live ✓"); onSaved(); onClose();
+  }
+  const set=(k)=>(e)=>setF(x=>({...x,[k]:e.target.value}));
+  return (
+    <Sheet title="Offer a member perk" subtitle="A deal for ABAA members — great for getting new customers" onClose={onClose}
+      footer={<PrimaryBtn onClick={save} loading={saving} className="w-full">Publish perk</PrimaryBtn>}>
+      <div className="space-y-3">
+        <input value={f.business_name} onChange={set("business_name")} placeholder="Business name *" className={fieldCls} style={fieldStyle}/>
+        <input value={f.offer} onChange={set("offer")} maxLength={40} placeholder="The offer * — e.g. 15% off, Free first session" className={fieldCls} style={fieldStyle}/>
+        <input value={f.title} onChange={set("title")} placeholder="What it's for * — e.g. Bookkeeping for startups" className={fieldCls} style={fieldStyle}/>
+        <textarea value={f.description} onChange={set("description")} rows={3} placeholder="Details and conditions (optional)" className={fieldCls+" resize-none"} style={fieldStyle}/>
+        <input value={f.how_to_redeem} onChange={set("how_to_redeem")} placeholder="How to claim — e.g. code ABAA15, or mention ABAA" className={fieldCls} style={fieldStyle}/>
+        <input value={f.url} onChange={set("url")} placeholder="Website (optional)" className={fieldCls} style={fieldStyle}/>
+        <div>
+          <div className="text-white/40 text-xs font-semibold mb-2">Category</div>
+          <div className="flex flex-wrap gap-2">{PERK_CATEGORIES.map(c=><Pill key={c} active={f.category===c} onClick={()=>setF(x=>({...x,category:c}))}>{c}</Pill>)}</div>
+        </div>
+        <div>
+          <div className="text-white/40 text-xs font-semibold mb-2">Ends on (optional)</div>
+          <input type="date" value={f.expires_at} onChange={set("expires_at")} className={fieldCls} style={{...fieldStyle,colorScheme:"dark"}}/>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+function PerkSheet({ perk, user, isAdmin, showToast, onClose, onChanged }){
+  const mine=perk.owner_id===user.id;
+  const o=perk.owner||{};
+  async function remove(){
+    if(!confirm("Remove this perk?")) return;
+    const {error}=await supabase.from("perks").delete().eq("id",perk.id);
+    if(error){ showToast(error.message,"error"); return; }
+    showToast("Perk removed"); onChanged(); onClose();
+  }
+  return (
+    <Sheet title={perk.business_name} subtitle={perk.category} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="rounded-3xl p-5 text-center" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.25),rgba(124,185,232,0.08))",border:"1px solid rgba(167,139,250,0.3)"}}>
+          <div className="text-3xl font-extrabold" style={{background:"linear-gradient(135deg,#fff,#c4b5fd)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{perk.offer}</div>
+          <div className="text-white/75 text-sm mt-1">{perk.title}</div>
+          {perk.expires_at&&<div className="text-white/40 text-[11px] mt-2">Ends {new Date(perk.expires_at).toLocaleDateString("en-AU",{day:"numeric",month:"short",year:"numeric"})}</div>}
+        </div>
+        {perk.description&&<p className="text-white/65 text-sm leading-relaxed whitespace-pre-wrap">{perk.description}</p>}
+        {perk.how_to_redeem&&(
+          <div>
+            <div className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">How to claim</div>
+            <div className="flex items-center gap-2 p-3 rounded-2xl" style={{border:"1.5px dashed rgba(167,139,250,0.45)",background:"rgba(124,111,224,0.06)"}}>
+              <div className="flex-1 text-white text-sm font-semibold break-words">{perk.how_to_redeem}</div>
+              <button type="button" onClick={()=>{ try{ navigator.clipboard.writeText(perk.how_to_redeem); showToast("Copied ✓"); }catch(e){} }} className="flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold text-white abaa-gradient">Copy</button>
+            </div>
+          </div>
+        )}
+        {perk.url&&<a href={perk.url} target="_blank" rel="noreferrer" className="block w-full text-center py-3 rounded-2xl text-white text-sm font-semibold" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}}>Visit website ↗</a>}
+        <div className="flex items-center gap-3 p-3 rounded-2xl" style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BORDER}`}}>
+          <Av name={o.name} url={o.avatar_url} color={pal(perk.owner_id)} size="sm"/>
+          <div className="min-w-0"><div className="text-white/40 text-[11px]">Offered by</div><div className="text-white text-sm font-semibold truncate">{mine?"You":o.name||"Member"}</div></div>
+        </div>
+        {(mine||isAdmin)&&<button type="button" onClick={remove} className="w-full py-2.5 rounded-2xl text-sm font-semibold" style={{border:"1px solid rgba(239,68,68,0.35)",color:"#f87171",background:"rgba(239,68,68,0.06)"}}>Remove perk</button>}
+      </div>
+    </Sheet>
+  );
+}
+
+function PerksBoard({ user, profile, isApproved, isAdmin, showToast }){
+  const [perks,setPerks]=useState(null);
+  const [setup,setSetup]=useState(false);
+  const [cat,setCat]=useState("");
+  const [showForm,setShowForm]=useState(false);
+  const [open,setOpen]=useState(null);
+  async function load(){
+    const {data,error}=await supabase.from("perks").select("*, owner:profiles(id,name,avatar_url)").order("created_at",{ascending:false});
+    if(error){ setSetup(true); setPerks([]); return; }
+    const today=new Date(); today.setHours(0,0,0,0);
+    setPerks((data||[]).filter(p=>!p.expires_at||new Date(p.expires_at)>=today));
+  }
+  useEffect(()=>{ load(); },[user?.id]);
+  if(setup) return <SetupNotice what="Member Perks"/>;
+  const cats=[...new Set((perks||[]).map(p=>p.category).filter(Boolean))];
+  const list=(perks||[]).filter(p=>!cat||p.category===cat);
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-white font-bold text-base">Member perks</div>
+          <div className="text-white/45 text-xs">Exclusive deals from fellow members</div>
+        </div>
+        <button type="button" onClick={()=>{ if(!isApproved){ showToast("Your account is pending admin approval","error"); return; } setShowForm(true); }}
+          className="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold" style={{background:"rgba(124,111,224,0.12)",border:"1px solid rgba(124,111,224,0.4)",color:"#c4b5fd"}}>+ Offer a perk</button>
+      </div>
+      {cats.length>1&&(
+        <div className="flex gap-2 overflow-x-auto pb-1" style={{scrollbarWidth:"none"}}>
+          <Pill active={!cat} onClick={()=>setCat("")}>All</Pill>
+          {cats.map(c=><Pill key={c} active={cat===c} onClick={()=>setCat(cat===c?"":c)}>{c}</Pill>)}
+        </div>
+      )}
+      {perks===null ? <SkeletonList n={3}/> : list.length===0 ? (
+        <EmptyState emoji="🎁" title="No perks yet" body="Own a business? Offer ABAA members a deal — it's a free way to win new customers." actionLabel="Offer the first perk" onAction={()=>{ if(isApproved) setShowForm(true); else showToast("Your account is pending admin approval","error"); }}/>
+      ) : (
+        <div className="space-y-3">
+          {list.map(p=>(
+            <button key={p.id} type="button" onClick={()=>setOpen(p)} className="abaa-lift w-full text-left rounded-3xl overflow-hidden flex" style={{background:CARD_BG,border:`1px solid ${BORDER}`}}>
+              <div className="w-28 flex-shrink-0 flex items-center justify-center p-3 text-center" style={{background:"linear-gradient(160deg,rgba(124,111,224,0.35),rgba(124,185,232,0.12))",borderRight:"1.5px dashed rgba(255,255,255,0.12)"}}>
+                <span className="text-white font-extrabold text-base leading-tight break-words">{p.offer}</span>
+              </div>
+              <div className="flex-1 min-w-0 p-4">
+                <div className="text-white/40 text-[11px] font-semibold uppercase tracking-wider truncate">{p.business_name}</div>
+                <div className="text-white text-sm font-semibold mt-0.5 leading-snug" style={{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{p.title}</div>
+                <div className="text-white/35 text-[11px] mt-1.5">{p.category}{p.owner_id===user.id?" · Yours":""}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      <AnimatePresence>{showForm&&<PerkForm key="perkform" user={user} profile={profile} showToast={showToast} onClose={()=>setShowForm(false)} onSaved={load}/>}</AnimatePresence>
+      <AnimatePresence>{open&&<PerkSheet key="perk" perk={open} user={user} isAdmin={isAdmin} showToast={showToast} onClose={()=>setOpen(null)} onChanged={load}/>}</AnimatePresence>
+    </div>
+  );
+}
+
+function MentorsList({ user, profile, isApproved, isAdmin, showToast, onGoTab }){
+  const [mentors,setMentors]=useState(null);
+  const [setup,setSetup]=useState(false);
+  const [conn,setConn]=useState({});
+  const [busy,setBusy]=useState(null);
+  const [booking,setBooking]=useState(null);
+  const [viewing,setViewing]=useState(null);
+  const [q,setQ]=useState("");
+  useEffect(()=>{
+    (async()=>{
+      const {data,error}=await supabase.from("profiles").select("*").eq("is_mentor",true).eq("is_approved",true);
+      if(error){ setSetup(true); setMentors([]); return; }
+      setMentors(data||[]);
+      setConn(await loadMyConnections(user?.id));
+    })();
+  },[user?.id]);
+  if(setup) return <SetupNotice what="Mentor office hours"/>;
+  const list=(mentors||[]).filter(m=>{ const s=q.toLowerCase(); return !s||[m.name,m.role,m.mentor_topics,m.location].some(v=>(v||"").toLowerCase().includes(s)); });
+  async function connect(m){ setBusy(m.id); const r=await sendConnectRequest({user,profile,isApproved,other:m,showToast}); if(r) setConn(c=>({...c,[m.id]:r.status==="accepted"?"accepted":"pending"})); setBusy(null); }
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="text-white font-bold text-base">Mentor office hours</div>
+        <div className="text-white/45 text-xs">Book a free chat with experienced founders and operators</div>
+      </div>
+      {!profile?.is_mentor&&(
+        <button type="button" onClick={()=>onGoTab&&onGoTab("profile")} className="w-full flex items-center gap-3 p-4 rounded-3xl text-left"
+          style={{background:"linear-gradient(135deg,rgba(124,185,232,0.14),rgba(124,111,224,0.06))",border:"1px solid rgba(124,185,232,0.3)"}}>
+          <span className="text-2xl">🧭</span>
+          <div className="flex-1 min-w-0"><div className="text-white font-semibold text-sm">Become a mentor</div><div className="text-white/45 text-xs">Give back with a few short chats a month</div></div>
+          <span className="text-white/30 text-xl">›</span>
+        </button>
+      )}
+      {(mentors||[]).length>4&&<SearchBar value={q} onChange={setQ} placeholder="Search by topic, name or role…"/>}
+      {mentors===null ? <SkeletonList n={3}/> : list.length===0 ? (
+        <EmptyState emoji="🧭" title={q?"No mentors match":"No mentors yet"} body={q?"Try a different topic.":"Experienced members can turn on office hours from their Profile."}/>
+      ) : (
+        <div className="space-y-3">
+          {list.map(m=>{ const isMe=m.id===user?.id; return (
+            <Card key={m.id} className="p-4">
+              <button type="button" onClick={()=>setViewing(m)} className="w-full flex items-start gap-3 text-left">
+                <Av name={m.name} url={m.avatar_url} color={pal(m.id)} size="md" ring/>
+                <div className="flex-1 min-w-0">
+                  <div className="text-white font-semibold text-sm flex items-center gap-1.5">{m.name}<VerifiedBadge verified={m.verified}/></div>
+                  <div className="text-white/45 text-xs truncate">{m.role||"Member"}{m.location?` · ${m.location}`:""}</div>
+                  {m.mentor_topics&&<div className="text-white/70 text-xs mt-2 leading-relaxed" style={{display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{m.mentor_topics}</div>}
+                </div>
+              </button>
+              {!isMe&&(
+                <div className="flex gap-2 mt-3">
+                  {m.booking_enabled
+                    ? <button type="button" onClick={()=>setBooking(m)} className="abaa-gradient flex-1 py-2.5 rounded-2xl text-white text-xs font-bold">Book a {m.booking_duration||30}-min chat</button>
+                    : <div className="flex-1 flex items-center text-white/35 text-[11px]">Connect to arrange a time</div>}
+                  <ConnectButton state={conn[m.id]} busy={busy===m.id} onClick={()=>connect(m)}/>
+                </div>
+              )}
+              {isMe&&<div className="text-emerald-400 text-xs mt-3">✓ This is you — members can find you here</div>}
+            </Card>
+          );})}
+        </div>
+      )}
+      <AnimatePresence>{booking&&<BookingModal key="mentorbook" host={booking} onClose={()=>setBooking(null)}/>}</AnimatePresence>
+      <AnimatePresence>{viewing&&<ProfileModal key="mentorprofile" p={viewing} onClose={()=>setViewing(null)} matchState={conn[viewing.id]==="accepted"?{status:"accepted"}:undefined} user={user} isAdmin={isAdmin} showToast={showToast} onLoginRequired={()=>setViewing(null)}/>}</AnimatePresence>
+    </div>
+  );
+}
+
+const COMMUNITY_SECTIONS=[["asks","Asks & Offers"],["perks","Perks"],["mentors","Mentors"],["projects","Projects"]];
+
+function CommunityTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs, onGoTab, projectBadge, forceSection }){
+  const [section,setSectionState]=useState(()=>{ if(forceSection) return forceSection; try{ return localStorage.getItem("abaa_community_section")||"asks"; }catch(e){ return "asks"; } });
+  function setSection(s){ setSectionState(s); try{ localStorage.setItem("abaa_community_section",s); }catch(e){} }
+  useEffect(()=>{ if(forceSection) setSectionState(forceSection); },[forceSection]);
+  return (
+    <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-14}} transition={{duration:0.28}} className="space-y-5">
+      <div>
+        <h1 className="text-3xl font-bold leading-tight" style={{background:"linear-gradient(135deg,#7cb9e8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Community</h1>
+        <p className="text-white/45 text-sm mt-1">Help each other grow</p>
+      </div>
+      <div className="grid grid-cols-4 gap-1 p-1 rounded-2xl" style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BORDER}`}}>
+        {COMMUNITY_SECTIONS.map(([id,label])=>(
+          <button key={id} type="button" onClick={()=>setSection(id)} className="relative py-2.5 px-1 rounded-xl text-[11px] font-semibold leading-tight transition-all"
+            style={section===id?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff",boxShadow:"0 4px 14px rgba(124,111,224,0.3)"}:{color:"rgba(255,255,255,0.5)"}}>
+            {label}
+            {id==="projects"&&projectBadge>0&&<span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-0.5 rounded-full text-[9px] font-bold text-white flex items-center justify-center" style={{background:"#ef4444"}}>{projectBadge>9?"9+":projectBadge}</span>}
+          </button>
+        ))}
+      </div>
+      {section==="asks"&&<AsksBoard user={user} profile={profile} isApproved={isApproved} isAdmin={isAdmin} showToast={showToast}/>}
+      {section==="perks"&&<PerksBoard user={user} profile={profile} isApproved={isApproved} isAdmin={isAdmin} showToast={showToast}/>}
+      {section==="mentors"&&<MentorsList user={user} profile={profile} isApproved={isApproved} isAdmin={isAdmin} showToast={showToast} onGoTab={onGoTab}/>}
+      {section==="projects"&&<ProjectsTab embedded user={user} profile={profile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={isViewAs}/>}
+    </motion.div>
+  );
+}
+
+function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmin, isViewAs, embedded=false }) {
   const [search, setSearch] = useState("");
   const [filterIndustry, setFilterIndustry] = useState("");
   const [filterRole, setFilterRole] = useState("");
@@ -4184,10 +4867,12 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
 
   return (
     <motion.div initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-14}} transition={{duration:0.28}} className="space-y-6">
+      {!embedded&&(
       <div>
         <h1 className="text-3xl font-bold leading-tight" style={{background:"linear-gradient(135deg,#7cb9e8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Discover Projects</h1>
         <p className="text-white/45 text-sm mt-1">Find projects to join and request to partner up</p>
       </div>
+      )}
 
       {/* Join requests to MY projects — shown here so it matches the Projects tab badge */}
       {user&&<ProjectJoinRequests user={user} showToast={showToast}/>}
@@ -4278,7 +4963,7 @@ function ProjectsTab({ user, profile, isApproved, showToast, requireAuth, isAdmi
       {/* Role selection modal */}
       <AnimatePresence>
         {roleModal&&(
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[85] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4" onClick={e=>e.target===e.currentTarget&&setRoleModal(null)}>
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 !m-0 z-[85] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4" onClick={e=>e.target===e.currentTarget&&setRoleModal(null)}>
             <motion.div initial={{y:60}} animate={{y:0}} exit={{y:60}} className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl p-6 mb-[72px] md:mb-0" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
               <div className="text-white font-bold text-lg mb-1">Join {roleModal.project_name}</div>
               <div className="text-white/45 text-sm mb-4">Which role are you applying for?</div>
@@ -4482,6 +5167,202 @@ function CardContacts({ user }) {
   );
 }
 
+// Saves the newer profile fields on their own, so the main auto-save never
+// breaks if the database hasn't been updated with these columns yet.
+async function saveProfileExtras(userId, fields, showToast){
+  const {error}=await supabase.from("profiles").update(fields).eq("id",userId);
+  if(error){
+    const needsSetup=/column|schema cache/i.test(error.message||"");
+    showToast(needsSetup?"This feature is being switched on — please try again shortly":(error.message||"Couldn't save"),"error");
+    return false;
+  }
+  return true;
+}
+
+function SavedTick({ show }){
+  return <span className="text-emerald-400 text-[11px] font-semibold transition-opacity" style={{opacity:show?1:0}}>✓ Saved</span>;
+}
+
+function OpenToEditor({ user, profile, setProfile, showToast }){
+  const [saved,setSaved]=useState(false);
+  const current=openToList(profile);
+  async function toggle(id){
+    const next=current.includes(id)?current.filter(x=>x!==id):[...current,id];
+    setProfile(p=>({...p,open_to:next}));
+    const ok=await saveProfileExtras(user.id,{open_to:next},showToast);
+    if(!ok){ setProfile(p=>({...p,open_to:current})); return; }
+    setSaved(true); setTimeout(()=>setSaved(false),1600);
+  }
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-white font-semibold text-sm">I'm open to</div>
+        <SavedTick show={saved}/>
+      </div>
+      <div className="text-white/40 text-xs mb-3">Shown on your profile so the right people reach out. Tap to turn on or off.</div>
+      <div className="flex flex-wrap gap-2">
+        {OPEN_TO.map(o=>(
+          <Pill key={o.id} dot={o.color} active={current.includes(o.id)} onClick={()=>toggle(o.id)}>{o.label}</Pill>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function MentorSettings({ user, profile, setProfile, showToast, bookingOn, onTurnOnBooking }){
+  const [topics,setTopics]=useState(profile?.mentor_topics||"");
+  const [saved,setSaved]=useState(false);
+  const on=!!profile?.is_mentor;
+  const first=useRef(true);
+  useEffect(()=>{ setTopics(profile?.mentor_topics||""); },[profile?.id]);
+  useEffect(()=>{
+    if(first.current){ first.current=false; return; }
+    const t=setTimeout(async()=>{
+      if((profile?.mentor_topics||"")===topics) return;
+      const ok=await saveProfileExtras(user.id,{mentor_topics:topics},showToast);
+      if(ok){ setProfile(p=>({...p,mentor_topics:topics})); setSaved(true); setTimeout(()=>setSaved(false),1600); }
+    },900);
+    return ()=>clearTimeout(t);
+  // eslint-disable-next-line
+  },[topics]);
+  async function toggle(){
+    const next=!on;
+    setProfile(p=>({...p,is_mentor:next}));
+    const ok=await saveProfileExtras(user.id,{is_mentor:next},showToast);
+    if(!ok){ setProfile(p=>({...p,is_mentor:on})); return; }
+    setSaved(true); setTimeout(()=>setSaved(false),1600);
+    if(next) showToast("You're now listed as a mentor ✓");
+  }
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2"><span className="text-white font-semibold text-sm">Mentor office hours</span><SavedTick show={saved}/></div>
+          <div className="text-white/40 text-xs mt-0.5">Offer short free chats to other founders. You'll appear in Community → Mentors.</div>
+        </div>
+        <button type="button" onClick={toggle} role="switch" aria-checked={on} aria-label="Offer mentor office hours"
+          className="relative flex-shrink-0 w-12 h-7 rounded-full transition-all"
+          style={{background:on?"linear-gradient(135deg,#7c6fe0,#a78bfa)":"rgba(255,255,255,0.12)"}}>
+          <span className="absolute top-1 w-5 h-5 rounded-full bg-white transition-all" style={{left:on?"26px":"4px",boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}/>
+        </button>
+      </div>
+      {on&&(
+        <div className="mt-4 space-y-3">
+          <textarea value={topics} onChange={e=>setTopics(e.target.value)} rows={2}
+            placeholder="What can you help with? e.g. fundraising, export to Asia, hiring your first team"
+            className={fieldCls+" resize-none text-sm"} style={fieldStyle}/>
+          {bookingOn
+            ? <div className="text-emerald-400 text-xs">✓ Members can book time from your booking calendar</div>
+            : (
+              <div className="p-3 rounded-2xl flex items-center gap-3" style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.25)"}}>
+                <div className="flex-1 text-amber-200/80 text-xs">Turn on your booking calendar so members can book a time with you.</div>
+                <button type="button" onClick={onTurnOnBooking} className="flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold text-white abaa-gradient">Turn on</button>
+              </div>
+            )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function LanguageCard(){
+  const [lang,setLangState]=useState(getLang());
+  function choose(l){ setLang(l); setLangState(l); }
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-white font-semibold text-sm">Language · 語言</div>
+          <div className="text-white/40 text-xs mt-0.5">Applies on this device</div>
+        </div>
+        <div className="flex p-1 rounded-full" style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BORDER}`}} translate="no">
+          {[["en","English"],["zh","繁體中文"]].map(([v,l])=>(
+            <button key={v} type="button" onClick={()=>choose(v)} className="notranslate px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all"
+              style={lang===v?{background:"linear-gradient(135deg,#7c6fe0,#a78bfa)",color:"#fff"}:{color:"rgba(255,255,255,0.55)"}}>{l}</button>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// "Add to Home Screen" — makes ABAA open full-screen like a native app
+function InstallAppCard({ compact=false }){
+  const [deferred,setDeferred]=useState(()=>window.__abaaInstallPrompt||null);
+  const [showHow,setShowHow]=useState(false);
+  const standalone=typeof window!=="undefined"&&(window.matchMedia?.("(display-mode: standalone)").matches||window.navigator.standalone===true);
+  const ua=typeof navigator!=="undefined"?navigator.userAgent:"";
+  const isIOS=/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  useEffect(()=>{
+    const h=()=>setDeferred(window.__abaaInstallPrompt||null);
+    window.addEventListener("abaa-install-ready",h);
+    return ()=>window.removeEventListener("abaa-install-ready",h);
+  },[]);
+  if(standalone) return null;
+  async function install(){
+    if(deferred){ deferred.prompt(); try{ await deferred.userChoice; }catch(e){} window.__abaaInstallPrompt=null; setDeferred(null); return; }
+    setShowHow(true);
+  }
+  return (
+    <>
+      <div className="rounded-3xl p-4 flex items-center gap-3"
+        style={{background:"linear-gradient(135deg,rgba(124,111,224,0.16),rgba(124,185,232,0.06))",border:"1px solid rgba(167,139,250,0.28)"}}>
+        <img src="/icon-192.png" alt="" className="w-11 h-11 rounded-xl flex-shrink-0" style={{boxShadow:"0 6px 18px rgba(124,111,224,0.35)"}}/>
+        <div className="flex-1 min-w-0">
+          <div className="text-white font-semibold text-sm">Get the ABAA app</div>
+          <div className="text-white/45 text-xs">{compact?"Add it to your home screen":"Opens full-screen from your home screen — free, no App Store needed"}</div>
+        </div>
+        <button type="button" onClick={install} className="abaa-gradient flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold text-white">Install</button>
+      </div>
+      <AnimatePresence>
+        {showHow&&(
+          <Sheet key="installhow" title="Add ABAA to your home screen" subtitle="Takes 10 seconds" onClose={()=>setShowHow(false)}
+            footer={<button onClick={()=>setShowHow(false)} className="abaa-gradient w-full py-3 rounded-2xl text-white font-bold text-sm">Got it</button>}>
+            {isIOS ? (
+              <ol className="space-y-4">
+                {[["1","Open app.abaa.au in Safari","Other browsers on iPhone can't install apps."],
+                  ["2","Tap the Share button","The square with an arrow pointing up, at the bottom or top of Safari."],
+                  ["3","Choose “Add to Home Screen”","Scroll down the list if you don't see it."],
+                  ["4","Tap “Add”","ABAA now opens like any other app."]].map(([n,t,d])=>(
+                  <li key={n} className="flex gap-3">
+                    <span className="w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white abaa-gradient">{n}</span>
+                    <div><div className="text-white text-sm font-semibold">{t}</div><div className="text-white/45 text-xs mt-0.5">{d}</div></div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <ol className="space-y-4">
+                {[["1","Open your browser menu","The ⋮ or ⋯ button next to the address bar."],
+                  ["2","Choose “Install app” or “Add to Home screen”","The wording depends on your browser."],
+                  ["3","Confirm","ABAA now opens like any other app."]].map(([n,t,d])=>(
+                  <li key={n} className="flex gap-3">
+                    <span className="w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white abaa-gradient">{n}</span>
+                    <div><div className="text-white text-sm font-semibold">{t}</div><div className="text-white/45 text-xs mt-0.5">{d}</div></div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Sheet>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+// One-time, dismissible "get the app" prompt for phone users
+function InstallNudge(){
+  const [hidden,setHidden]=useState(()=>{ try{ return localStorage.getItem("abaa_install_nudge")==="1"; }catch(e){ return false; } });
+  const standalone=window.matchMedia?.("(display-mode: standalone)").matches||window.navigator.standalone===true;
+  if(hidden||standalone) return null;
+  return (
+    <div className="md:hidden relative mb-5">
+      <InstallAppCard compact/>
+      <button type="button" onClick={()=>{ setHidden(true); try{ localStorage.setItem("abaa_install_nudge","1"); }catch(e){} }}
+        className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white/60" style={{background:"#1a1f33",border:`1px solid ${BORDER}`}} aria-label="Dismiss">✕</button>
+    </div>
+  );
+}
+
 function ProfileTab({ user, profile, setProfile, showToast, isApproved, isAdmin, onGoTab }) {
   const [form, setForm] = useState({name:"",bio:"",experience:"",location:"",skills:[],mobile:"",role:"",project_name:"",project_pitch:"",project_industry:"",linkedin_url:"",website_url:"",whatsapp:"",roles_needed:[],business_name:"",wechat:"",headline:"",availability:"",project_stage:"",project_website:"",team_size:"",funding_status:"",brand_color:"#7c6fe0",cover_url:"",qr_logo_url:"",links:{},businesses:[],booking_enabled:false,booking_duration:30,booking_hours:null});
   const [newSkill, setNewSkill] = useState("");
@@ -4608,6 +5489,11 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved, isAdmin,
           <span className="text-white/30 text-xl">›</span>
         </button>
       )}
+
+      <InstallAppCard/>
+
+      {/* What I'm open to — shown on my profile and used by the Match filter */}
+      <OpenToEditor user={user} profile={profile} setProfile={setProfile} showToast={showToast}/>
 
       {/* Scan a business card */}
       {user&&(
@@ -4790,6 +5676,11 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved, isAdmin,
         </div>
       </Card>
 
+      {/* Mentor office hours — uses the booking calendar below */}
+      <MentorSettings user={user} profile={profile} setProfile={setProfile} showToast={showToast}
+        bookingOn={!!form.booking_enabled}
+        onTurnOnBooking={()=>{ setForm(f=>({...f,booking_enabled:true})); showToast("Booking calendar on ✓ — set your hours below"); }}/>
+
       {/* Booking availability (Calendly-style) */}
       <BookingSettings form={form} setForm={setForm}/>
 
@@ -4971,6 +5862,8 @@ function ProfileTab({ user, profile, setProfile, showToast, isApproved, isAdmin,
         </Card>
       )}
 
+      <LanguageCard/>
+
       {/* Logout */}
       <button onClick={()=>supabase.auth.signOut()}
         className="w-full py-3.5 rounded-2xl text-sm font-semibold transition-all"
@@ -5132,7 +6025,7 @@ function OnboardingModal({ user, onComplete }) {
   );
 
   return (
-    <motion.div initial={{opacity:0}} animate={{opacity:1}} className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4">
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} className="fixed inset-0 !m-0 z-[60] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4">
       <motion.div initial={{y:60}} animate={{y:0}} className="w-full max-w-lg overflow-y-auto rounded-t-3xl md:rounded-3xl" style={{maxHeight:"92vh",background:"#0f1320",border:`1px solid ${BORDER}`}}>
         {/* Header */}
         <div className="p-6 pb-4" style={{background:"linear-gradient(135deg,rgba(124,111,224,0.25),rgba(167,139,250,0.12))"}}>
@@ -5342,7 +6235,7 @@ function BookingModal({ host, onClose }) {
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-      className="fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
+      className="fixed inset-0 !m-0 z-[95] flex items-end md:items-center justify-center bg-black/85 p-0 md:p-4"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
         className="w-full md:max-w-md rounded-t-3xl md:rounded-3xl flex flex-col" style={{background:"#0f1320",border:`1px solid ${BORDER}`,maxHeight:"88vh"}}>
@@ -5688,7 +6581,7 @@ function BusinessCardPage({ userId }) {
       <AnimatePresence>{showBooking&&<BookingModal key="booking" host={p} onClose={()=>setShowBooking(false)}/>}</AnimatePresence>
       <AnimatePresence>{showExchange&&(
         <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-          className="fixed inset-0 z-[90] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4"
+          className="fixed inset-0 !m-0 z-[90] flex items-end md:items-center justify-center bg-black/80 p-0 md:p-4"
           onClick={e=>e.target===e.currentTarget&&setShowExchange(false)}>
           <motion.div initial={{y:"100%"}} animate={{y:0}} exit={{y:"100%"}} transition={{type:"spring",damping:30,stiffness:300}}
             className="w-full md:max-w-sm rounded-t-3xl md:rounded-3xl p-6" style={{background:"#0f1320",border:`1px solid ${BORDER}`}}>
@@ -5942,7 +6835,7 @@ export default function App() {
   const [notif,setNotif]=useState({partner:0,project:0,events:0,messages:0,bookings:0});
   const [showNotifs,setShowNotifs]=useState(false);
   const [showSearch,setShowSearch]=useState(false);
-  const [globalScan,setGlobalScan]=useState(false);
+  const [globalScan,setGlobalScan]=useState(()=>{ try{ return new URLSearchParams(window.location.search).get("scan")==="1"; }catch(e){ return false; } });
   const [checklistDismissed,setChecklistDismissed]=useState(false);
   const processedUserRef = useRef(null);
   const [toast,setToast]=useState(null);
@@ -6114,8 +7007,8 @@ export default function App() {
     { id:"matching", label:"Match",  icon:(active)=>(
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active?2.5:2}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     )},
-    { id:"projects",    label:"Projects",    icon:(active)=>(
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active?2.5:2}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    { id:"community", label:"Community", icon:(active)=>(
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active?2.5:2} strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" strokeWidth={3}/></svg>
     ), auth:true},
     { id:"profile", label:"Profile", icon:(active)=>(
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active?2.5:2}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -6128,13 +7021,13 @@ export default function App() {
   const badgeFor=(id)=>{
     if(viewAs) return 0;
     if(id==="matching") return notif.partner;
-    if(id==="projects") return notif.project;
+    if(id==="community") return notif.project;
     if(id==="events") return notif.events;
     return 0;
   };
 
   // Sign-in screen if not logged in and trying to access auth tab
-  const needsAuth = NAV.find(n=>n.id===tab)?.auth && !user;
+  const needsAuth = (NAV.find(n=>n.id===tab)?.auth || tab==="projects") && !user;
 
   return (
     <div className="min-h-screen" style={{background:BG}}>
@@ -6162,7 +7055,7 @@ export default function App() {
           )}
         </div>
         <nav className="flex items-center gap-1">
-          {NAV.map(n=>{const active=tab===n.id;return(
+          {NAV.map(n=>{const active=(tab==="projects"?"community":tab)===n.id;return(
             <button key={n.id} onClick={()=>goTab(n.id,n.auth)}
               className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-semibold transition-all"
               style={active?{background:"linear-gradient(135deg,rgba(124,111,224,0.2),rgba(167,139,250,0.12))",color:"#a78bfa",border:"1px solid rgba(124,111,224,0.35)"}:{color:"rgba(255,255,255,0.45)",border:"1px solid transparent"}}>
@@ -6204,6 +7097,7 @@ export default function App() {
 
       {/* Content */}
       <main className="relative z-10 max-w-lg mx-auto px-5 pt-6 pb-32 md:pb-12 md:pt-8">
+        {user&&tab==="events"&&<InstallNudge/>}
         <AnimatePresence mode="wait">
           {needsAuth?(
             <motion.div key="gate" initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} className="text-center py-16">
@@ -6216,7 +7110,7 @@ export default function App() {
             </motion.div>
           ):tab==="matching"?<MatchTab key="m" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs} connectId={connectId} onGoTab={setTab}/>
           :tab==="events"?<EventsTab key="e" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
-          :tab==="projects"?<ProjectsTab key="pr" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs}/>
+          :(tab==="community"||tab==="projects")?<CommunityTab key="co" user={user} profile={effectiveProfile} isApproved={isApproved} showToast={showToast} requireAuth={requireAuth} isAdmin={isAdmin} isViewAs={!!viewAs} onGoTab={setTab} projectBadge={viewAs?0:notif.project} forceSection={tab==="projects"?"projects":undefined}/>
           :tab==="profile"?<ProfileTab key="p" user={user} profile={effectiveProfile} setProfile={setEffectiveProfile} showToast={showToast} isApproved={isApproved} isAdmin={realIsAdmin&&!viewAs} onGoTab={setTab}/>
           :tab==="manage"&&realIsAdmin&&!viewAs?<ManageTab key="a" showToast={showToast} onBack={()=>setTab("profile")} onViewAs={(u)=>{setViewAs(u);setTab("profile");showToast(`Now viewing as ${u.name||u.email}`);}}/>
           :null}
@@ -6248,7 +7142,7 @@ export default function App() {
                 transition:"transform .25s cubic-bezier(.2,.8,.2,1), opacity .2s ease"}}>
         <div className="flex items-end justify-around px-1 py-2 relative">
           {NAV.slice(0,2).map(n=>{
-            const active=tab===n.id;
+            const active=(tab==="projects"?"community":tab)===n.id;
             const badge=badgeFor(n.id);
             return (
               <button key={n.id} onClick={()=>goTab(n.id,n.auth)}
@@ -6282,7 +7176,7 @@ export default function App() {
           </button>
 
           {NAV.slice(2).map(n=>{
-            const active=tab===n.id;
+            const active=(tab==="projects"?"community":tab)===n.id;
             const badge=badgeFor(n.id);
             return (
               <button key={n.id} onClick={()=>goTab(n.id,n.auth)}
